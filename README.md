@@ -45,9 +45,17 @@
 
 ## 安装
 
+### OpenClaw（推荐）
+
+> **推荐使用 [OpenClaw](https://openclaw.io)**，配合微信 / Telegram 等消息软件的消息转发功能，可以直接在聊天窗口和前任的数字人格对话，体验更沉浸。
+
+```bash
+git clone https://github.com/titanwings/ex-skill ~/.openclaw/workspace/skills/create-ex
+```
+
 ### Claude Code
 
-> **重要**：Claude Code 从 **git 仓库根目录** 的 `.claude/skills/` 查找 skill。请在正确的位置执行。
+> Claude Code 从 **git 仓库根目录** 的 `.claude/skills/` 查找 skill。请在正确的位置执行。
 
 ```bash
 # 安装到当前项目（在 git 仓库根目录执行）
@@ -56,12 +64,6 @@ git clone https://github.com/titanwings/ex-skill .claude/skills/create-ex
 
 # 或安装到全局（所有项目都能用）
 git clone https://github.com/titanwings/ex-skill ~/.claude/skills/create-ex
-```
-
-### OpenClaw
-
-```bash
-git clone https://github.com/titanwings/ex-skill ~/.openclaw/workspace/skills/create-ex
 ```
 
 ### 依赖（可选）
@@ -76,7 +78,7 @@ pip3 install -r requirements.txt
 
 ## 使用
 
-在 Claude Code 中输入：
+在 OpenClaw 或 Claude Code 中输入：
 
 ```
 /create-ex
