@@ -1,0 +1,23 @@
+{
+  "name": "小美（示例）",
+  "slug": "example_xiaomei",
+  "created_at": "2026-03-31T00:00:00Z",
+  "updated_at": "2026-03-31T00:00:00Z",
+  "version": "v1",
+  "profile": {
+    "gender": "女",
+    "age_range": "23-27",
+    "rel_stage": "分手",
+    "duration": "1年3个月",
+    "zodiac": "天蝎座",
+    "mbti": "INFP"
+  },
+  "tags": {
+    "attachment": ["焦虑型"],
+    "rel_traits": ["话痨", "冷战派", "道歉困难户", "嘴硬心软", "分手发起方"]
+  },
+  "impression": "说分手的是她，但分手后还是找过来，搞不清楚她到底想要什么",
+  "knowledge_sources": [],
+  "corrections_count": 0,
+  "message_count": 0
+}
