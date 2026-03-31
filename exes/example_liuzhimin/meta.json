@@ -1,0 +1,34 @@
+{
+  "name": "柳智敏（示例）",
+  "slug": "example_liuzhimin",
+  "created_at": "2026-03-31T00:00:00Z",
+  "updated_at": "2026-03-31T00:00:00Z",
+  "version": "v1",
+  "profile": {
+    "gender": "女",
+    "age_range": "23-27",
+    "rel_stage": "分手",
+    "duration": "8个月",
+    "sun": "双鱼座",
+    "moon": "天蝎座",
+    "rising": "天秤座",
+    "venus": "水瓶座",
+    "mars": "双鱼座",
+    "mercury": "双鱼座",
+    "full_chart": null
+  },
+  "mbti": {
+    "type": "INFJ",
+    "dominant": "Ni",
+    "stack": "Ni-Fe-Ti-Se",
+    "enneagram": "4w5"
+  },
+  "tags": {
+    "attachment": ["混乱型"],
+    "rel_traits": ["话少但在乎", "冷战派", "道歉困难户", "高冷装", "不确定感制造者", "分手发起方"]
+  },
+  "impression": "永远不知道她在想什么，靠近了又推开，但眼神里分明有很多话没说出来",
+  "knowledge_sources": [],
+  "corrections_count": 0,
+  "message_count": 0
+}

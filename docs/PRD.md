@@ -64,16 +64,35 @@
 ### 3.1 基础信息字段
 
 ```yaml
+# ── 基础信息 ──────────────────────────────────────────
 name:         称呼/代号                    # 必填，用于生成 slug
-gender:       性别                         # 可选：男 / 女 / 不透露
+gender:       性别/代词                    # 可选：男 / 女 / 非二元 / 不透露
+              # 支持 LGBT+：直接写 TA 的性别认同，如"跨性别女" / "非二元" / "他/他们"
+rel_orientation: 关系类型                  # 可选：异性恋 / 同性 / 双性恋 / 不限
+              # 仅用于代词选择，不影响 Persona 生成逻辑
 age_range:    年龄段                       # 可选：18-22 / 23-27 / 28-35 / 35+
 rel_stage:    关系阶段                     # 可选：恋爱 / 分手 / 暧昧 / 复杂关系
 duration:     在一起时长                   # 可选，如：3个月 / 1年半
-zodiac:       星座                         # 可选，12星座
-mbti:         MBTI 类型                   # 可选，如：ENFP / ISTJ
-attachment:   []                          # 多选，见 3.2
-rel_traits:   []                          # 多选，见 3.3
-impression:   ""                          # 可选，你对 TA 的主观描述
+
+# ── 星盘 ──────────────────────────────────────────────
+sun:          太阳星座                     # 可选，12星座
+moon:         月亮星座                     # 可选，12星座
+rising:       上升星座                     # 可选，12星座
+venus:        金星星座                     # 可选，爱的语言
+mars:         火星星座                     # 可选，冲突和欲望模式
+mercury:      水星星座                     # 可选，沟通风格
+full_chart:   完整星盘文字                  # 可选，直接贴 astro.com 结果
+
+# ── MBTI & 九型 ───────────────────────────────────────
+mbti:         MBTI 类型                    # 可选，如：INFJ / ENFP
+mbti_dominant: 主导功能                    # 可选，如：Ni / Fe / Ti / Ne
+mbti_stack:   认知功能栈                   # 可选，如：Ni-Fe-Ti-Se
+enneagram:    九型人格                     # 可选，如：4w5 / 2w3
+
+# ── 关系特质 ──────────────────────────────────────────
+attachment:   []                           # 多选：安全型/焦虑型/回避型/混乱型
+rel_traits:   []                           # 多选，见 3.3
+impression:   ""                           # 可选，你对 TA 的主观描述
 ```
 
 ### 3.2 依恋风格标签
@@ -105,17 +124,31 @@ impression:   ""                          # 可选，你对 TA 的主观描述
 
 ---
 
-## 四、微信数据支持
+## 四、消息来源支持
 
-| 来源 | 格式 | 处理方式 | 说明 |
-|------|------|---------|------|
-| 微信 PC 端数据库 | `MSG*.db`（加密 SQLite） | `wechat_decryptor.py` → `wechat_parser.py` | 最完整，推荐 |
-| 已解密 .db 文件 | `.db`（SQLite） | `wechat_parser.py` | 用 WeChatMsg/PyWxDump 等工具先解密 |
-| 导出文本记录 | `.txt` / `.csv` | 文本解析 | 手动导出或截图转文字 |
-| 截图 | `.jpg` / `.png` | 图片 OCR | 截图聊天记录 |
+| 来源 | 平台 | 格式 | 处理方式 | 适用场景 |
+|------|------|------|---------|---------|
+| 微信 PC 端数据库 | 微信（国内） | `MSG*.db`（加密 SQLite） | `wechat_decryptor.py` → `wechat_parser.py` | 最完整，推荐 |
+| 已解密微信 .db | 微信（国内） | `.db`（SQLite） | `wechat_parser.py` | 用 WeChatMsg/PyWxDump 先解密 |
+| iMessage 数据库 | iMessage（海外/iOS） | `chat.db`（macOS SQLite） | `wechat_parser.py --imessage` | macOS 用户，海外前任 |
+| iMessage 导出文本 | iMessage | `.txt` | 文本解析 | 截图或手动复制 |
+| 导出文本记录 | 通用 | `.txt` / `.csv` | 文本解析 | 任何平台手动导出 |
+| 截图 | 通用 | `.jpg` / `.png` | 图片 OCR | 截图聊天记录 |
+
+**iMessage 使用说明（macOS）：**
+```
+iMessage 数据库位于：~/Library/Messages/chat.db
+读取方式：
+  python tools/wechat_parser.py --imessage \
+    --db ~/Library/Messages/chat.db \
+    --target "+1xxxxxxxxxx 或 apple_id@email.com" \
+    --output messages.txt
+
+注意：需要在 macOS 隐私设置中给终端/Python 授权"完全磁盘访问权限"
+```
 
 **注意事项：**
-- 解密过程仅在本地执行，数据不上传
+- 解密/读取过程仅在本地执行，数据不上传
 - 仅提取目标联系人的消息，其他人的数据不处理
 - 原始数据库文件不修改，只读取
 

@@ -1,25 +1,33 @@
 #!/usr/bin/env python3
 """
-微信聊天记录解析器
+聊天记录解析器（微信 + iMessage）
 
-从解密后的微信 PC 端 SQLite 数据库中提取指定联系人的聊天记录，
-分类整理后输出供 AI 分析使用。
+支持平台：
+  - 微信 PC 端（Windows）：解密后的 MSG*.db
+  - iMessage（macOS）：~/Library/Messages/chat.db
 
 用法：
-  # 从解密后的 db 目录提取
-  python wechat_parser.py --db-dir ./decrypted/ --target "小美" --output messages.txt
+  # 微信 — 从解密后的 db 目录提取
+  python wechat_parser.py --db-dir ./decrypted/ --target "柳智敏" --output messages.txt
 
-  # 从单个 db 文件提取
-  python wechat_parser.py --db ./decrypted/MSG0.db --target "小美" --output messages.txt
-
-  # 列出所有联系人（方便找到正确的微信名）
+  # 微信 — 列出所有联系人
   python wechat_parser.py --db-dir ./decrypted/ --list-contacts
 
-  # 从导出的文本文件解析（方式 C：手动导出）
-  python wechat_parser.py --txt ./chat_export.txt --target "小美" --output messages.txt
+  # iMessage — 从 macOS chat.db 提取
+  python wechat_parser.py --imessage --db ~/Library/Messages/chat.db \
+      --target "+1xxxxxxxxxx" --output messages.txt
+
+  # iMessage — 列出所有 iMessage 联系人
+  python wechat_parser.py --imessage --db ~/Library/Messages/chat.db --list-contacts
+
+  # 从导出的文本文件解析（通用）
+  python wechat_parser.py --txt ./chat_export.txt --target "柳智敏" --output messages.txt
 
 依赖：
   pip install sqlite3（标准库，无需额外安装）
+
+iMessage 授权：
+  macOS 需要在「系统偏好设置 → 隐私 → 完全磁盘访问权限」中添加终端/Python
 """
 
 import sqlite3
@@ -327,18 +335,153 @@ def parse_txt_export(file_path: str, target_name: str) -> list[dict]:
     return messages
 
 
+# ─── iMessage 解析 ────────────────────────────────────────────────────────────
+
+def list_imessage_contacts(db_path: str) -> list[dict]:
+    """列出 iMessage 数据库中的所有联系人"""
+    conn = open_db(db_path)
+    if not conn:
+        return []
+    try:
+        rows = conn.execute("""
+            SELECT DISTINCT
+                h.id AS handle_id,
+                COUNT(m.ROWID) AS message_count
+            FROM handle h
+            LEFT JOIN message m ON m.handle_id = h.ROWID
+            GROUP BY h.id
+            ORDER BY message_count DESC
+        """).fetchall()
+        return [{"handle": row["handle_id"], "count": row["message_count"]} for row in rows]
+    except Exception as e:
+        print(f"读取 iMessage 联系人失败：{e}", file=sys.stderr)
+        return []
+    finally:
+        conn.close()
+
+
+def extract_imessage_messages(db_path: str, target_handle: str) -> list[dict]:
+    """
+    从 macOS iMessage chat.db 提取指定联系人的消息。
+
+    chat.db 结构：
+      - message 表：ROWID, text, is_from_me, date (Apple epoch), handle_id
+      - handle 表：ROWID, id (phone/email)
+      - chat_message_join / chat_handle_join：多对多关联
+
+    Apple epoch = 秒数从 2001-01-01 起（比 Unix epoch 少 978307200 秒）
+    """
+    conn = open_db(db_path)
+    if not conn:
+        return []
+
+    APPLE_EPOCH_OFFSET = 978307200  # 2001-01-01 00:00:00 UTC
+
+    messages = []
+    try:
+        # 找到目标 handle 的 ROWID（支持模糊匹配）
+        handle_rows = conn.execute(
+            "SELECT ROWID, id FROM handle WHERE id LIKE ?",
+            (f"%{target_handle}%",)
+        ).fetchall()
+
+        if not handle_rows:
+            print(f"未找到联系人 '{target_handle}'，尝试模糊匹配...", file=sys.stderr)
+            handle_rows = conn.execute("SELECT ROWID, id FROM handle").fetchall()
+            handle_rows = [r for r in handle_rows if target_handle.lower() in r["id"].lower()]
+
+        if not handle_rows:
+            print(f"未找到 '{target_handle}'，使用 --list-contacts 查看所有联系人", file=sys.stderr)
+            return []
+
+        handle_ids = [r["ROWID"] for r in handle_rows]
+        matched_handle = handle_rows[0]["id"]
+        print(f"匹配到联系人：{matched_handle}（共 {len(handle_ids)} 个 handle）")
+
+        placeholders = ",".join("?" * len(handle_ids))
+        rows = conn.execute(f"""
+            SELECT
+                m.ROWID,
+                m.text,
+                m.is_from_me,
+                m.date,
+                m.date / 1000000000 AS date_sec,
+                h.id AS handle_id
+            FROM message m
+            LEFT JOIN handle h ON h.ROWID = m.handle_id
+            WHERE m.handle_id IN ({placeholders})
+               OR (m.is_from_me = 1 AND m.ROWID IN (
+                   SELECT message_id FROM chat_message_join
+                   WHERE chat_id IN (
+                       SELECT chat_id FROM chat_handle_join
+                       WHERE handle_id IN ({placeholders})
+                   )
+               ))
+            ORDER BY m.date ASC
+        """, handle_ids + handle_ids).fetchall()
+
+        for row in rows:
+            text = row["text"] or ""
+            if not text.strip():
+                continue
+
+            # 过滤系统消息（通常以特殊 unicode 字符开头）
+            if text.startswith("\ufffc"):  # attachment placeholder
+                continue
+
+            # 计算时间戳
+            raw_date = row["date"] or 0
+            # iMessage date 在 iOS 11+ 是纳秒，早期是秒
+            if raw_date > 1e12:
+                unix_ts = raw_date / 1e9 + APPLE_EPOCH_OFFSET
+            else:
+                unix_ts = raw_date + APPLE_EPOCH_OFFSET
+
+            try:
+                timestamp = datetime.fromtimestamp(unix_ts).strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                timestamp = str(raw_date)
+
+            messages.append({
+                "sender": "me" if row["is_from_me"] else "them",
+                "content": text.strip(),
+                "timestamp": timestamp,
+                "talker_wxid": row["handle_id"] or matched_handle,
+            })
+
+    except Exception as e:
+        print(f"读取 iMessage 消息失败：{e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+    finally:
+        conn.close()
+
+    return messages
+
+
 # ─── 消息分类 ──────────────────────────────────────────────────────────────────
 
 CONFLICT_KEYWORDS = [
+    # 中文
     "生气", "吵架", "分手", "算了", "随便", "不想说了", "烦", "你走",
     "不理你", "别找我", "不要了", "受够了", "够了", "不可能", "冷战",
     "对不起", "我错了", "不是那个意思", "误会", "委屈", "哭",
+    # 英文（iMessage）
+    "break up", "breakup", "i'm done", "we're done", "leave me alone",
+    "i'm sorry", "sorry", "i was wrong", "stop texting", "don't text",
+    "fighting", "argument", "upset", "angry", "hurt", "crying",
+    "whatever", "fine", "nevermind", "forget it",
 ]
 
 SWEET_KEYWORDS = [
+    # 中文
     "想你", "喜欢你", "爱你", "宝", "亲爱的", "么么", "晚安",
     "早安", "吃了吗", "到家了吗", "在干嘛", "你在吗", "想见你",
     "好想", "心动", "开心", "幸福", "快乐",
+    # 英文（iMessage）
+    "miss you", "love you", "i love", "good morning", "good night",
+    "thinking of you", "how are you", "are you okay", "cute", "sweet",
+    "made me think of you", "can't stop thinking", "wanna see you",
 ]
 
 
@@ -397,10 +540,10 @@ def extract_conversation_threads(messages: list[dict], window_size: int = 10) ->
 
 # ─── 输出格式化 ────────────────────────────────────────────────────────────────
 
-def format_output(target_name: str, classified: dict, include_context: bool = True) -> str:
+def format_output(target_name: str, classified: dict, include_context: bool = True, source: str = "微信") -> str:
     """格式化输出供 AI 分析"""
     lines = [
-        f"# 微信聊天记录提取结果",
+        f"# {source}聊天记录提取结果",
         f"目标人物：{target_name}",
         f"TA 发送的消息数：{classified['total_their_count']}",
         f"对话总消息数：{classified['total_count']}",
@@ -469,100 +612,134 @@ def format_output(target_name: str, classified: dict, include_context: bool = Tr
     return "\n".join(lines)
 
 
-def print_contact_list(contacts: list[dict]):
+def print_contact_list(contacts: list[dict], is_imessage: bool = False):
     """打印联系人列表"""
     if not contacts:
         print("未找到联系人数据")
         return
-    print(f"找到 {len(contacts)} 个联系人：\n")
-    print(f"{'微信ID':<30} {'备注名':<20} {'昵称':<20}")
-    print("-" * 70)
-    for c in contacts:
-        print(f"{c['wxid']:<30} {c['remark']:<20} {c['nickname']:<20}")
+    if is_imessage:
+        print(f"找到 {len(contacts)} 个 iMessage 联系人：\n")
+        print(f"{'Handle (手机号/Apple ID)':<45} {'消息数':<10}")
+        print("-" * 55)
+        for c in contacts:
+            print(f"{c['handle']:<45} {c['count']:<10}")
+    else:
+        print(f"找到 {len(contacts)} 个联系人：\n")
+        print(f"{'微信ID':<30} {'备注名':<20} {'昵称':<20}")
+        print("-" * 70)
+        for c in contacts:
+            print(f"{c['wxid']:<30} {c['remark']:<20} {c['nickname']:<20}")
 
 
 # ─── 主程序 ───────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(
-        description="微信聊天记录解析器",
+        description="聊天记录解析器（微信 + iMessage）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例：
-  # 列出所有联系人
+  # 微信 — 列出所有联系人
   python wechat_parser.py --db-dir ./decrypted/ --list-contacts
 
-  # 提取指定联系人消息
-  python wechat_parser.py --db-dir ./decrypted/ --target "小美" --output messages.txt
+  # 微信 — 提取指定联系人消息
+  python wechat_parser.py --db-dir ./decrypted/ --target "柳智敏" --output messages.txt
 
-  # 从文本导出解析
-  python wechat_parser.py --txt ./chat.txt --target "小美" --output messages.txt
+  # iMessage — 列出所有联系人（macOS）
+  python wechat_parser.py --imessage --db ~/Library/Messages/chat.db --list-contacts
 
-  # 不包含完整对话（更简洁）
-  python wechat_parser.py --db-dir ./decrypted/ --target "小美" --no-context --output messages.txt
+  # iMessage — 提取消息
+  python wechat_parser.py --imessage --db ~/Library/Messages/chat.db \\
+      --target "+1xxxxxxxxxx" --output messages.txt
+
+  # 从文本导出解析（通用）
+  python wechat_parser.py --txt ./chat.txt --target "柳智敏" --output messages.txt
         """
     )
 
-    parser.add_argument("--db-dir", help="解密后的数据库目录")
-    parser.add_argument("--db", help="单个解密后的 .db 文件")
+    parser.add_argument("--imessage", action="store_true", help="使用 iMessage 模式（macOS chat.db）")
+    parser.add_argument("--db-dir", help="解密后的微信数据库目录")
+    parser.add_argument("--db", help="单个 .db 文件（微信或 iMessage）")
     parser.add_argument("--txt", help="手动导出的文本文件")
-    parser.add_argument("--target", help="目标联系人名称（微信名/备注名）")
+    parser.add_argument("--target", help="目标联系人名称（微信名/备注名，或 iMessage 手机号/Apple ID）")
     parser.add_argument("--output", default=None, help="输出文件路径（默认打印到 stdout）")
     parser.add_argument("--list-contacts", action="store_true", help="列出所有联系人")
     parser.add_argument("--no-context", action="store_true", help="不包含完整对话片段")
     parser.add_argument("--json", action="store_true", help="以 JSON 格式输出原始消息")
 
     args = parser.parse_args()
+    source_label = "iMessage" if args.imessage else "微信"
 
-    # 列出联系人
-    if args.list_contacts:
-        if not args.db_dir:
-            print("错误：--list-contacts 需要 --db-dir", file=sys.stderr)
+    # ── iMessage 模式 ──────────────────────────────────────────────────────────
+    if args.imessage:
+        if not args.db:
+            # 默认路径
+            default_path = Path.home() / "Library" / "Messages" / "chat.db"
+            if default_path.exists():
+                args.db = str(default_path)
+                print(f"使用默认 iMessage 数据库：{args.db}")
+            else:
+                print("错误：未找到 iMessage 数据库，请用 --db 指定路径", file=sys.stderr)
+                print("默认路径：~/Library/Messages/chat.db", file=sys.stderr)
+                print("注意：需要在系统偏好设置中给终端授权「完全磁盘访问权限」", file=sys.stderr)
+                sys.exit(1)
+
+        if args.list_contacts:
+            contacts = list_imessage_contacts(args.db)
+            print_contact_list(contacts, is_imessage=True)
+            return
+
+        if not args.target:
+            print("错误：请指定 --target（手机号或 Apple ID）", file=sys.stderr)
             sys.exit(1)
-        contacts = list_contacts(args.db_dir)
-        print_contact_list(contacts)
-        return
 
-    if not args.target:
-        print("错误：请指定 --target（目标联系人名称）", file=sys.stderr)
-        sys.exit(1)
+        print(f"从 iMessage 数据库提取：{args.db}")
+        messages = extract_imessage_messages(args.db, args.target)
 
-    # 提取消息
-    target_name = args.target
-    messages = []
-
-    if args.txt:
-        print(f"从文本文件解析：{args.txt}")
-        messages = parse_txt_export(args.txt, target_name)
-
-    elif args.db:
-        print(f"从单个数据库解析：{args.db}")
-        target_wxid = None
-        if args.db_dir:
-            target_wxid = find_contact_wxid(args.db_dir, target_name)
-        messages = extract_messages_from_db(args.db, target_wxid)
-        # 如果没有 wxid 过滤，尝试按名字过滤（需要联系人表）
-        if not target_wxid:
-            messages = [m for m in messages if True]  # 无过滤，返回所有
-
-    elif args.db_dir:
-        # 找到目标联系人的 wxid
-        target_wxid = find_contact_wxid(args.db_dir, target_name)
-        if target_wxid:
-            print(f"找到联系人 wxid：{target_wxid}")
-        else:
-            print(f"警告：未找到 '{target_name}' 的精确匹配，将尝试提取所有消息", file=sys.stderr)
-
-        print(f"从目录解析：{args.db_dir}")
-        messages = extract_messages_from_dir(args.db_dir, target_wxid)
-
+    # ── 微信模式 ───────────────────────────────────────────────────────────────
     else:
-        print("错误：请指定 --db-dir 或 --db 或 --txt", file=sys.stderr)
-        sys.exit(1)
+        # 列出联系人
+        if args.list_contacts:
+            if not args.db_dir:
+                print("错误：--list-contacts 需要 --db-dir", file=sys.stderr)
+                sys.exit(1)
+            contacts = list_contacts(args.db_dir)
+            print_contact_list(contacts, is_imessage=False)
+            return
+
+        if not args.target:
+            print("错误：请指定 --target（目标联系人名称）", file=sys.stderr)
+            sys.exit(1)
+
+        messages = []
+
+        if args.txt:
+            print(f"从文本文件解析：{args.txt}")
+            messages = parse_txt_export(args.txt, args.target)
+
+        elif args.db:
+            print(f"从单个数据库解析：{args.db}")
+            target_wxid = find_contact_wxid(args.db_dir, args.target) if args.db_dir else None
+            messages = extract_messages_from_db(args.db, target_wxid)
+
+        elif args.db_dir:
+            target_wxid = find_contact_wxid(args.db_dir, args.target)
+            if target_wxid:
+                print(f"找到联系人 wxid：{target_wxid}")
+            else:
+                print(f"警告：未找到 '{args.target}' 的精确匹配", file=sys.stderr)
+            print(f"从目录解析：{args.db_dir}")
+            messages = extract_messages_from_dir(args.db_dir, target_wxid)
+
+        else:
+            print("错误：请指定 --db-dir 或 --db 或 --txt（或加 --imessage 使用 iMessage 模式）", file=sys.stderr)
+            sys.exit(1)
+
+    target_name = args.target
 
     if not messages:
         print(f"警告：未找到消息", file=sys.stderr)
-        if args.db_dir:
+        if not args.imessage and args.db_dir:
             print("提示：", file=sys.stderr)
             print("  1. 运行 --list-contacts 查看所有联系人的精确名称", file=sys.stderr)
             print("  2. 确认数据库已正确解密（运行 wechat_decryptor.py）", file=sys.stderr)
@@ -579,7 +756,7 @@ def main():
         output_content = json.dumps(messages, ensure_ascii=False, indent=2)
     else:
         classified = classify_messages(messages, target_name)
-        output_content = format_output(target_name, classified, include_context=not args.no_context)
+        output_content = format_output(target_name, classified, include_context=not args.no_context, source=source_label)
 
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:
