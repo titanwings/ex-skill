@@ -174,7 +174,7 @@ pip3 install -r requirements.txt
 
 | 部分 | 内容 |
 |------|------|
-| **Part A — Relationship Memory** | 关系记忆：你们去过的地方、only you们懂的梗、吵架模式、重要时间线 |
+| **Part A — Relationship Memory** | 关系记忆：你们去过的地方、只有你们懂的梗、吵架模式、重要时间线 |
 | **Part B — Persona** | 6 层性格结构：核心模式 → 身份 → 表达风格 → 情感行为 → 冲突边界 → 雷区 |
 
 运行逻辑：`收到消息 → 检查核心模式 → 调取关系记忆 → 判断当前情绪状态 → 用 TA 的方式输出`
