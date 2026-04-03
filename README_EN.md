@@ -74,6 +74,14 @@ pip3 install -r requirements.txt
 
 > WeChat auto-extraction supports Windows and macOS — just keep the desktop client logged in. iMessage requires macOS. See [INSTALL.md](INSTALL.md) for details.
 
+### Quick self-check
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+Run this before importing real chat data so you know the core `create/update/list/rollback` and text-import flow is working.
+
 ---
 
 ## Usage

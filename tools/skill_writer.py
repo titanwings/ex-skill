@@ -78,6 +78,7 @@ def slugify(name: str) -> str:
 
     import re
     slug = re.sub(r"_+", "_", slug).strip("_")
+    slug = slug.lower()
     return slug if slug else "ex"
 
 
@@ -289,6 +290,12 @@ def main() -> None:
     args = parser.parse_args()
     base_dir = Path(args.base_dir).expanduser()
 
+    meta: dict = {}
+    if args.meta:
+        meta = json.loads(Path(args.meta).read_text(encoding="utf-8"))
+    if args.name:
+        meta["name"] = args.name
+
     if args.action == "list":
         exes = list_exes(base_dir)
         if not exes:
@@ -302,15 +309,9 @@ def main() -> None:
                 print()
 
     elif args.action == "create":
-        if not args.slug and not args.name:
+        if not args.slug and not meta.get("name"):
             print("错误：create 操作需要 --slug 或 --name", file=sys.stderr)
             sys.exit(1)
-
-        meta: dict = {}
-        if args.meta:
-            meta = json.loads(Path(args.meta).read_text(encoding="utf-8"))
-        if args.name:
-            meta["name"] = args.name
 
         slug = args.slug or slugify(meta.get("name", "ex"))
 

@@ -76,6 +76,14 @@ pip3 install -r requirements.txt
 
 > 微信自动采集支持 Windows 和 macOS，桌面端微信保持登录即可；iMessage 需要 macOS。详见 [INSTALL.md](INSTALL.md)
 
+### 快速自检
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+跑通后再开始真实导入，至少能先确认 `create/update/list/rollback` 和文本导入链路是正常的。
+
 ---
 
 ## 使用

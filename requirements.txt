@@ -1,0 +1,4 @@
+pypinyin>=0.54,<1.0
+psutil>=5.9,<8.0
+pycryptodome>=3.20,<4.0
+pymem>=1.14,<2.0; sys_platform == "win32"

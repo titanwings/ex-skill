@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.coverage
+.pytest_cache/
+.venv/
+
+decrypted/
+messages.txt
+*.sqlite
+
+exes/*
+!exes/example_liuzhimin/
+!exes/example_liuzhimin/**
