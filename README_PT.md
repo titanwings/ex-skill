@@ -32,6 +32,18 @@ Fala no tom dele(a), demonstra carinho do jeito dele(a), sabe quando ficaria em 
 
 ---
 
+> 🆕 **Atualização 2025.04.07** — O entusiasmo da comunidade pelos remixes de dot-skill tem sido incrível! Criei uma galeria comunitária — PRs são bem-vindos!
+>
+> Compartilhe qualquer skill ou meta-skill e direcione tráfego diretamente para seu próprio repo do GitHub. Sem intermediários.
+>
+> 👉 **[titanwings.github.io/colleague-skill-site](https://titanwings.github.io/colleague-skill-site/)**
+>
+> Já listados: 户晨风.skill · 峰哥亡命天涯.skill · 罗翔.skill e mais
+>
+> ⏳ Os PRs estão sendo revisados manualmente — pode demorar um pouco, obrigado pela paciência!
+
+---
+
 ## Fontes de dados
 
 > Esta ainda é uma versão beta do ex.skill — mais fontes em breve. Fique ligado(a)!
