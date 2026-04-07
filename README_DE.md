@@ -32,6 +32,18 @@ Spricht in ihrem Ton, zeigt Fürsorge auf ihre Art, weiß, wann sie schweigen w�
 
 ---
 
+> 🆕 **Update 2025.04.07** — Die Begeisterung der Community für dot-skill-Remixes ist überwältigend! Ich habe eine Community-Galerie gebaut — PRs willkommen!
+>
+> Teile jede skill oder meta-skill und leite Traffic direkt zu deinem eigenen GitHub-Repo. Kein Mittelsmann.
+>
+> 👉 **[titanwings.github.io/colleague-skill-site](https://titanwings.github.io/colleague-skill-site/)**
+>
+> Bereits gelistet: 户晨风.skill · 峰哥亡命天涯.skill · 罗翔.skill und mehr
+>
+> ⏳ PRs werden derzeit manuell geprüft — kann etwas dauern, danke für deine Geduld!
+
+---
+
 ## Datenquellen
 
 > Dies ist noch eine Beta-Version von ex.skill — weitere Quellen folgen bald. Bleibt dran!
