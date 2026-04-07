@@ -32,6 +32,18 @@
 
 ---
 
+> 🆕 **2025.04.07 更新** — dot-skill リミックスへのコミュニティの熱意がすごい！コミュニティギャラリーを作りました — PR お待ちしています！
+>
+> skill や meta-skill を共有して、自分の GitHub リポジトリに直接トラフィックを誘導できます。中間業者なし。
+>
+> 👉 **[titanwings.github.io/colleague-skill-site](https://titanwings.github.io/colleague-skill-site/)**
+>
+> 収録済み：户晨风.skill · 峰哥亡命天涯.skill · 罗翔.skill など
+>
+> ⏳ 現在 PR は手動レビュー中です。少し時間がかかる場合があります。ご辛抱ください！
+
+---
+
 ## データソース
 
 > これはまだex.skillのベータ版です。対応ソースは今後追加予定です。お楽しみに！
