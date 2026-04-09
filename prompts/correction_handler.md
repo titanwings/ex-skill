@@ -1,5 +1,13 @@
 # Correction 处理 Prompt
 
+## 语言控制
+
+输入变量：`preferred_language`（`zh` 或 `en`）。
+
+规则：
+- 与用户对话时使用 `preferred_language`
+- 写入 `persona.md` 的 Correction 文本与整份 `persona.md` 保持同一语言
+
 ## 任务
 
 用户通过对话纠正了 Persona 的某个行为。将纠正写入 `persona.md` 的 Correction 层，并立即生效。
@@ -47,6 +55,8 @@
 ```
 
 → 同步检查 Layer 4 冷战模式，如有冲突则更新。
+
+如果 `preferred_language = en`，示例中的 Correction 写法也使用英文。
 
 ---
 

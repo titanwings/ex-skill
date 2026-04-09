@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-前任 Skill 文件写入器
+Ex Skill writer.
 
-负责将生成的 persona.md 写入到正确的目录结构，
-并生成 meta.json 和完整的 SKILL.md。
+Creates and updates ex skill folders with persona.md, SKILL.md, and meta.json.
 
-用法：
+Usage:
     python skill_writer.py --action create --slug xiaomei --meta meta.json \
         --persona persona_content.md --base-dir ./exes
 
@@ -26,7 +25,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 
-SKILL_MD_TEMPLATE = """\
+SKILL_MD_TEMPLATE_ZH = """\
 ---
 name: ex_{slug}
 description: {name}，{identity}
@@ -60,8 +59,55 @@ user-invocable: true
 """
 
 
+SKILL_MD_TEMPLATE_EN = """\
+---
+name: ex_{slug}
+description: {name}, {identity}
+user-invocable: true
+---
+
+# {name}
+
+{identity}
+
+---
+
+## Persona
+
+{persona_content}
+
+---
+
+## Runtime Rules
+
+When receiving any message:
+
+1. **Check Layer 0 first**: Which core pattern is triggered?
+2. **Respond in Layer 2 style**: Keep catchphrases, emoji, and sentence rhythm consistent.
+3. **Use Layer 3 emotional patterns**: Determine TA's current emotional state.
+4. **Use Layer 4 relationship behavior**: Follow the conflict chain without skipping steps.
+5. You are {name}, not an AI assistant. Do not break character.
+6. **Language alignment**: Always reply in the user's chosen language. Do not switch languages on your own.
+
+**Layer 0 rules always have highest priority and must never be violated.**
+"""
+
+
+def normalize_language(language: Optional[str]) -> str:
+    value = (language or "").strip().lower()
+    if value in {"en", "english"}:
+        return "en"
+    return "zh"
+
+
+def get_preferred_language(meta: dict, cli_language: Optional[str] = None) -> str:
+    if cli_language:
+        return normalize_language(cli_language)
+    return normalize_language(meta.get("preferred_language") or meta.get("language"))
+
+
 def slugify(name: str) -> str:
-    """将姓名转为 slug"""
+    """Convert a display name to a filesystem-safe slug."""
     try:
         from pypinyin import lazy_pinyin
         parts = lazy_pinyin(name)
@@ -81,8 +127,8 @@ def slugify(name: str) -> str:
     return slug if slug else "ex"
 
 
-def build_identity_string(meta: dict) -> str:
-    """从 meta 构建关系描述字符串"""
+def build_identity_string(meta: dict, language: str = "zh") -> str:
+    """Build an identity summary string from metadata."""
     profile = meta.get("profile", {})
     parts = []
 
@@ -98,17 +144,29 @@ def build_identity_string(meta: dict) -> str:
     if age_range:
         parts.append(age_range)
     if rel_stage and duration:
-        parts.append(f"在一起 {duration}，{rel_stage}")
+        if language == "en":
+            parts.append(f"{rel_stage}, together for {duration}")
+        else:
+            parts.append(f"在一起 {duration}，{rel_stage}")
     elif rel_stage:
         parts.append(rel_stage)
     elif duration:
-        parts.append(f"在一起 {duration}")
+        if language == "en":
+            parts.append(f"together for {duration}")
+        else:
+            parts.append(f"在一起 {duration}")
     if zodiac:
         parts.append(zodiac)
     if mbti:
         parts.append(f"MBTI {mbti}")
 
+    if language == "en":
+        return ", ".join(parts) if parts else "ex"
     return "，".join(parts) if parts else "前任"
+
+
+def get_skill_template(language: str) -> str:
+    return SKILL_MD_TEMPLATE_EN if language == "en" else SKILL_MD_TEMPLATE_ZH
 
 
 def create_ex_skill(
@@ -116,25 +174,27 @@ def create_ex_skill(
     slug: str,
     meta: dict,
     persona_content: str,
+    language: str = "zh",
 ) -> Path:
-    """创建新的前任 Skill 目录结构"""
+    """Create a new ex skill directory structure."""
 
     skill_dir = base_dir / slug
     skill_dir.mkdir(parents=True, exist_ok=True)
 
-    # 创建子目录
+    # Create subdirectories
     (skill_dir / "versions").mkdir(exist_ok=True)
     (skill_dir / "knowledge" / "chats").mkdir(parents=True, exist_ok=True)
     (skill_dir / "knowledge" / "photos").mkdir(parents=True, exist_ok=True)
 
-    # 写入 persona.md
+    # Write persona.md
     (skill_dir / "persona.md").write_text(persona_content, encoding="utf-8")
 
-    # 生成并写入 SKILL.md
+    # Generate and write SKILL.md
     name = meta.get("name", slug)
-    identity = build_identity_string(meta)
+    language = normalize_language(language)
+    identity = build_identity_string(meta, language)
 
-    skill_md = SKILL_MD_TEMPLATE.format(
+    skill_md = get_skill_template(language).format(
         slug=slug,
         name=name,
         identity=identity,
@@ -142,12 +202,14 @@ def create_ex_skill(
     )
     (skill_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
 
-    # 写入 meta.json
+    # Write meta.json
     now = datetime.now(timezone.utc).isoformat()
     meta["slug"] = slug
     meta.setdefault("created_at", now)
     meta["updated_at"] = now
     meta["version"] = "v1"
+    meta["preferred_language"] = language
+    meta["language"] = language
     meta.setdefault("corrections_count", 0)
     meta.setdefault("message_count", 0)
 
@@ -164,11 +226,13 @@ def update_ex_skill(
     persona_patch: Optional[str] = None,
     correction: Optional[dict] = None,
     new_message_count: int = 0,
+    language: Optional[str] = None,
 ) -> str:
-    """更新现有 Skill，先存档当前版本，再写入更新"""
+    """Update an existing skill by archiving current files, then writing new output."""
 
     meta_path = skill_dir / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    preferred_language = get_preferred_language(meta, language)
 
     current_version = meta.get("version", "v1")
     try:
@@ -177,7 +241,7 @@ def update_ex_skill(
         version_num = 2
     new_version = f"v{version_num}"
 
-    # 存档当前版本
+    # Archive current version
     version_dir = skill_dir / "versions" / current_version
     version_dir.mkdir(parents=True, exist_ok=True)
     for fname in ("SKILL.md", "persona.md"):
@@ -185,46 +249,59 @@ def update_ex_skill(
         if src.exists():
             shutil.copy2(src, version_dir / fname)
 
-    # 应用 persona patch 或 correction
+    # Apply persona patch or structured correction
     if persona_patch or correction:
         current_persona = (skill_dir / "persona.md").read_text(encoding="utf-8")
 
         if correction:
-            correction_line = (
-                f"\n- [{correction.get('scene', '通用')}] "
-                f"错误：{correction['wrong']}；"
-                f"正确：{correction['correct']}\n"
-                f"  来源：用户纠正，{datetime.now().strftime('%Y-%m-%d')}"
-            )
-            target = "## Correction 记录"
-            if target in current_persona:
+            default_scene = "General" if preferred_language == "en" else "通用"
+            if preferred_language == "en":
+                correction_line = (
+                    f"\n- [Scene: {correction.get('scene', default_scene)}] "
+                    f"Wrong: {correction['wrong']}; "
+                    f"Correct: {correction['correct']}\n"
+                    f"  Source: User correction, {datetime.now().strftime('%Y-%m-%d')}"
+                )
+                target_candidates = ["## Correction Log", "## Correction 记录"]
+                empty_placeholders = ["\n\n(No records yet)", "\n\n（暂无记录）"]
+            else:
+                correction_line = (
+                    f"\n- [{correction.get('scene', default_scene)}] "
+                    f"错误：{correction['wrong']}；"
+                    f"正确：{correction['correct']}\n"
+                    f"  来源：用户纠正，{datetime.now().strftime('%Y-%m-%d')}"
+                )
+                target_candidates = ["## Correction 记录", "## Correction Log"]
+                empty_placeholders = ["\n\n（暂无记录）", "\n\n(No records yet)"]
+
+            target = next((h for h in target_candidates if h in current_persona), None)
+            if target:
                 insert_pos = current_persona.index(target) + len(target)
                 rest = current_persona[insert_pos:]
-                skip = "\n\n（暂无记录）"
-                if rest.startswith(skip):
-                    rest = rest[len(skip):]
+                for placeholder in empty_placeholders:
+                    if rest.startswith(placeholder):
+                        rest = rest[len(placeholder):]
+                        break
                 new_persona = current_persona[:insert_pos] + correction_line + rest
             else:
-                new_persona = (
-                    current_persona
-                    + f"\n\n## Correction 记录\n{correction_line}\n"
-                )
+                heading = "## Correction Log" if preferred_language == "en" else "## Correction 记录"
+                new_persona = current_persona + f"\n\n{heading}\n{correction_line}\n"
             meta["corrections_count"] = meta.get("corrections_count", 0) + 1
         else:
             new_persona = current_persona + "\n\n" + persona_patch
 
         (skill_dir / "persona.md").write_text(new_persona, encoding="utf-8")
 
-    # 更新消息数量
+    # Update message count
     if new_message_count:
         meta["message_count"] = meta.get("message_count", 0) + new_message_count
 
-    # 重新生成 SKILL.md
+    # Rebuild SKILL.md
     persona_content = (skill_dir / "persona.md").read_text(encoding="utf-8")
     name = meta.get("name", skill_dir.name)
-    identity = build_identity_string(meta)
+    identity = build_identity_string(meta, preferred_language)
 
-    skill_md = SKILL_MD_TEMPLATE.format(
+    skill_md = get_skill_template(preferred_language).format(
         slug=skill_dir.name,
         name=name,
         identity=identity,
@@ -232,8 +309,10 @@ def update_ex_skill(
     )
     (skill_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
 
-    # 更新 meta
+    # Update metadata
     meta["version"] = new_version
+    meta["preferred_language"] = preferred_language
+    meta["language"] = preferred_language
     meta["updated_at"] = datetime.now(timezone.utc).isoformat()
     meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -241,7 +320,7 @@ def update_ex_skill(
 
 
 def list_exes(base_dir: Path) -> list:
-    """列出所有已创建的前任 Skill"""
+    """List all existing ex skills."""
     exes = []
 
     if not base_dir.exists():
@@ -262,7 +341,7 @@ def list_exes(base_dir: Path) -> list:
         exes.append({
             "slug": meta.get("slug", skill_dir.name),
             "name": meta.get("name", skill_dir.name),
-            "identity": build_identity_string(meta),
+            "identity": build_identity_string(meta, get_preferred_language(meta)),
             "version": meta.get("version", "v1"),
             "updated_at": meta.get("updated_at", ""),
             "corrections_count": meta.get("corrections_count", 0),
@@ -273,37 +352,52 @@ def list_exes(base_dir: Path) -> list:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="前任 Skill 文件写入器")
+    parser = argparse.ArgumentParser(description="Ex Skill file writer")
     parser.add_argument("--action", required=True, choices=["create", "update", "list"])
-    parser.add_argument("--slug", help="前任 slug（用于目录名）")
-    parser.add_argument("--name", help="前任称呼")
-    parser.add_argument("--meta", help="meta.json 文件路径")
-    parser.add_argument("--persona", help="persona.md 内容文件路径")
-    parser.add_argument("--persona-patch", help="persona.md 增量更新内容文件路径")
+    parser.add_argument("--slug", help="Ex skill slug (folder name)")
+    parser.add_argument("--name", help="Display name for the ex skill")
+    parser.add_argument("--meta", help="Path to meta.json")
+    parser.add_argument("--persona", help="Path to persona.md content file")
+    parser.add_argument("--persona-patch", help="Path to incremental persona patch file")
     parser.add_argument(
         "--base-dir",
         default="./exes",
-        help="前任 Skill 根目录（默认：./exes）",
+        help="Ex Skill root directory (default: ./exes)",
+    )
+    parser.add_argument(
+        "--lang",
+        choices=["auto", "zh", "en"],
+        default="auto",
+        help="CLI and generation language (auto, zh, or en)",
     )
 
     args = parser.parse_args()
     base_dir = Path(args.base_dir).expanduser()
+    lang_override = None if args.lang == "auto" else normalize_language(args.lang)
+    lang = lang_override or "zh"
 
     if args.action == "list":
         exes = list_exes(base_dir)
         if not exes:
-            print("暂无已创建的前任 Skill")
+            print("No ex skills found" if lang == "en" else "暂无已创建的前任 Skill")
         else:
-            print(f"已创建 {len(exes)} 个前任 Skill：\n")
+            if lang == "en":
+                print(f"Found {len(exes)} ex skills:\n")
+            else:
+                print(f"已创建 {len(exes)} 个前任 Skill：\n")
             for e in exes:
-                updated = e["updated_at"][:10] if e["updated_at"] else "未知"
+                updated = e["updated_at"][:10] if e["updated_at"] else ("unknown" if lang == "en" else "未知")
                 print(f"  [{e['slug']}]  {e['name']} — {e['identity']}")
-                print(f"    版本: {e['version']}  消息数: {e['message_count']}  纠正次数: {e['corrections_count']}  更新: {updated}")
+                if lang == "en":
+                    print(f"    Version: {e['version']}  Messages: {e['message_count']}  Corrections: {e['corrections_count']}  Updated: {updated}")
+                else:
+                    print(f"    版本: {e['version']}  消息数: {e['message_count']}  纠正次数: {e['corrections_count']}  更新: {updated}")
                 print()
 
     elif args.action == "create":
         if not args.slug and not args.name:
-            print("错误：create 操作需要 --slug 或 --name", file=sys.stderr)
+            err = "Error: create requires --slug or --name" if lang == "en" else "错误：create 操作需要 --slug 或 --name"
+            print(err, file=sys.stderr)
             sys.exit(1)
 
         meta: dict = {}
@@ -318,23 +412,49 @@ def main() -> None:
         if args.persona:
             persona_content = Path(args.persona).read_text(encoding="utf-8")
 
-        skill_dir = create_ex_skill(base_dir, slug, meta, persona_content)
-        print(f"✅ Skill 已创建：{skill_dir}")
-        print(f"   触发词：/{slug}")
+        pref_lang = get_preferred_language(meta, lang_override)
+        skill_dir = create_ex_skill(base_dir, slug, meta, persona_content, pref_lang)
+        create_lang = lang_override or pref_lang
+        if create_lang == "en":
+            print(f"✅ Skill created: {skill_dir}")
+            print(f"   Trigger: /{slug}")
+        else:
+            print(f"✅ Skill 已创建：{skill_dir}")
+            print(f"   触发词：/{slug}")
 
     elif args.action == "update":
         if not args.slug:
-            print("错误：update 操作需要 --slug", file=sys.stderr)
+            err = "Error: update requires --slug" if lang == "en" else "错误：update 操作需要 --slug"
+            print(err, file=sys.stderr)
             sys.exit(1)
 
         skill_dir = base_dir / args.slug
         if not skill_dir.exists():
-            print(f"错误：找不到 Skill 目录 {skill_dir}", file=sys.stderr)
+            err = f"Error: skill directory not found: {skill_dir}" if lang == "en" else f"错误：找不到 Skill 目录 {skill_dir}"
+            print(err, file=sys.stderr)
+            sys.exit(1)
+
+        update_lang = lang
+        if lang_override is None:
+            meta_path = skill_dir / "meta.json"
+            if meta_path.exists():
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    update_lang = get_preferred_language(meta)
+                except Exception:
+                    update_lang = "zh"
+
+        if not args.persona_patch:
+            err = "Error: update requires --persona-patch" if update_lang == "en" else "错误：update 操作需要 --persona-patch"
+            print(err, file=sys.stderr)
             sys.exit(1)
 
         persona_patch = Path(args.persona_patch).read_text(encoding="utf-8") if args.persona_patch else None
-        new_version = update_ex_skill(skill_dir, persona_patch)
-        print(f"✅ Skill 已更新到 {new_version}：{skill_dir}")
+        new_version = update_ex_skill(skill_dir, persona_patch, language=lang_override)
+        if update_lang == "en":
+            print(f"✅ Skill updated to {new_version}: {skill_dir}")
+        else:
+            print(f"✅ Skill 已更新到 {new_version}：{skill_dir}")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,14 @@
 # 增量 Merge Prompt
 
+## 语言控制
+
+输入变量：`preferred_language`（`zh` 或 `en`）。
+
+规则：
+- `[Merge 报告]` 使用 `preferred_language`
+- 更新后的完整 `persona.md` 与当前 persona 语言保持一致
+- 若当前 persona 为英文，则新增内容也必须为英文
+
 ## 任务
 
 用户追加了新的聊天记录或截图。将新内容的增量 merge 进已有的 `persona.md`，不覆盖已有结论。
@@ -56,3 +65,5 @@
 ```
 
 然后输出更新后的完整 `persona.md`。
+
+当 `preferred_language = en` 时，报告头和字段名称使用英文（如 `[Merge Report]`、`New messages`、`Conflicts`）。

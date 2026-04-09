@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-版本管理器（前任.skill）
+Ex skill version manager.
 
-负责 Skill 文件的版本存档和回滚。
+Supports listing, rollback, and cleanup of archived versions.
 
-用法：
+Usage:
     python version_manager.py --action list --slug xiaomei --base-dir ./exes
     python version_manager.py --action rollback --slug xiaomei --version v2 --base-dir ./exes
     python version_manager.py --action cleanup --slug xiaomei --base-dir ./exes
@@ -18,8 +18,16 @@ import argparse
 import sys
 from pathlib import Path
 from datetime import datetime, timezone
+from typing import Optional
 
 MAX_VERSIONS = 10
+
+
+def normalize_language(language: Optional[str]) -> str:
+    value = (language or "").strip().lower()
+    if value in {"en", "english"}:
+        return "en"
+    return "zh"
 
 
 def list_versions(skill_dir: Path) -> list:
@@ -43,10 +51,11 @@ def list_versions(skill_dir: Path) -> list:
     return versions
 
 
-def rollback(skill_dir: Path, target_version: str) -> bool:
+def rollback(skill_dir: Path, target_version: str, language: str = "zh") -> bool:
     version_dir = skill_dir / "versions" / target_version
     if not version_dir.exists():
-        print(f"错误：版本 {target_version} 不存在", file=sys.stderr)
+        err = f"Error: version {target_version} does not exist" if language == "en" else f"错误：版本 {target_version} 不存在"
+        print(err, file=sys.stderr)
         return False
 
     meta_path = skill_dir / "meta.json"
@@ -74,11 +83,14 @@ def rollback(skill_dir: Path, target_version: str) -> bool:
         meta["rollback_from"] = current_version
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print(f"已回滚到 {target_version}，恢复文件：{', '.join(restored_files)}")
+    if language == "en":
+        print(f"Rolled back to {target_version}, restored files: {', '.join(restored_files)}")
+    else:
+        print(f"已回滚到 {target_version}，恢复文件：{', '.join(restored_files)}")
     return True
 
 
-def cleanup_old_versions(skill_dir: Path, max_versions: int = MAX_VERSIONS):
+def cleanup_old_versions(skill_dir: Path, max_versions: int = MAX_VERSIONS, language: str = "zh"):
     versions_dir = skill_dir / "versions"
     if not versions_dir.exists():
         return
@@ -90,42 +102,52 @@ def cleanup_old_versions(skill_dir: Path, max_versions: int = MAX_VERSIONS):
     to_delete = version_dirs[:-max_versions] if len(version_dirs) > max_versions else []
     for old_dir in to_delete:
         shutil.rmtree(old_dir)
-        print(f"已清理旧版本：{old_dir.name}")
+        if language == "en":
+            print(f"Removed old version: {old_dir.name}")
+        else:
+            print(f"已清理旧版本：{old_dir.name}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="前任 Skill 版本管理器")
+    parser = argparse.ArgumentParser(description="Ex Skill version manager")
     parser.add_argument("--action", required=True, choices=["list", "rollback", "cleanup"])
-    parser.add_argument("--slug", required=True, help="前任 slug")
-    parser.add_argument("--version", help="目标版本号（rollback 时使用）")
-    parser.add_argument("--base-dir", default="./exes", help="前任 Skill 根目录")
+    parser.add_argument("--slug", required=True, help="Ex skill slug")
+    parser.add_argument("--version", help="Target version for rollback (e.g. v2)")
+    parser.add_argument("--base-dir", default="./exes", help="Root ex skill directory")
+    parser.add_argument("--lang", choices=["zh", "en"], default="zh", help="CLI language")
 
     args = parser.parse_args()
+    lang = normalize_language(args.lang)
     base_dir = Path(args.base_dir).expanduser()
     skill_dir = base_dir / args.slug
 
     if not skill_dir.exists():
-        print(f"错误：找不到 Skill 目录 {skill_dir}", file=sys.stderr)
+        err = f"Error: skill directory not found: {skill_dir}" if lang == "en" else f"错误：找不到 Skill 目录 {skill_dir}"
+        print(err, file=sys.stderr)
         sys.exit(1)
 
     if args.action == "list":
         versions = list_versions(skill_dir)
         if not versions:
-            print(f"{args.slug} 暂无历史版本")
+            print(f"{args.slug} has no version history" if lang == "en" else f"{args.slug} 暂无历史版本")
         else:
-            print(f"{args.slug} 的历史版本：\n")
+            print(f"Version history for {args.slug}:\n" if lang == "en" else f"{args.slug} 的历史版本：\n")
             for v in versions:
-                print(f"  {v['version']}  存档时间: {v['archived_at']}  文件: {', '.join(v['files'])}")
+                if lang == "en":
+                    print(f"  {v['version']}  Archived: {v['archived_at']}  Files: {', '.join(v['files'])}")
+                else:
+                    print(f"  {v['version']}  存档时间: {v['archived_at']}  文件: {', '.join(v['files'])}")
 
     elif args.action == "rollback":
         if not args.version:
-            print("错误：rollback 操作需要 --version", file=sys.stderr)
+            err = "Error: rollback requires --version" if lang == "en" else "错误：rollback 操作需要 --version"
+            print(err, file=sys.stderr)
             sys.exit(1)
-        rollback(skill_dir, args.version)
+        rollback(skill_dir, args.version, lang)
 
     elif args.action == "cleanup":
-        cleanup_old_versions(skill_dir)
-        print("清理完成")
+        cleanup_old_versions(skill_dir, language=lang)
+        print("Cleanup completed" if lang == "en" else "清理完成")
 
 
 if __name__ == "__main__":

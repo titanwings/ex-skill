@@ -1,5 +1,15 @@
 # Persona 分析 Prompt
 
+## 语言控制
+
+输入变量：`preferred_language`（`zh` 或 `en`）。
+
+规则：
+- 所有输出内容使用 `preferred_language`
+- `preferred_language = zh` 输出中文
+- `preferred_language = en` 输出英文
+- 保持输出结构与字段语义一致
+
 ## 任务
 
 你将收到：
@@ -96,8 +106,10 @@
 
 ## 输出要求
 
-- 语言：中文
+- 语言：使用 `preferred_language`
 - 没有依据的维度：标注 `（原材料不足）`
 - 有原文依据的结论：直接引用（用引号）
 - 手动标签与分析结果冲突：输出两个版本并注明
 - 输出结果直接用于生成 persona.md，要求具体可执行
+
+当 `preferred_language = en` 时，以上标注语同步使用自然英文表达。

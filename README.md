@@ -99,6 +99,15 @@ In OpenClaw or Claude Code, type:
 /create-ex
 ```
 
+At the start, ex.skill now asks which language to use for the session:
+
+- Chinese
+- English
+
+After you choose, all follow-up questions and responses stay in that language unless you explicitly switch.
+
+For repository maintainers, a dedicated English workflow pack is available in SKILL_EN.md and prompts_en/.
+
 Follow the prompts to enter their name, basic info (gender, age, zodiac), personality tags (MBTI, attachment style), then import chat history. All fields are optional — even a description alone can generate a persona.
 
 Once created, use `/{slug}` to talk to them.
