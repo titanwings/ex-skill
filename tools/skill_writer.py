@@ -181,15 +181,15 @@ def create_ex_skill(
     skill_dir = base_dir / slug
     skill_dir.mkdir(parents=True, exist_ok=True)
 
-    # 创建子目录
+    # Create subdirectories
     (skill_dir / "versions").mkdir(exist_ok=True)
     (skill_dir / "knowledge" / "chats").mkdir(parents=True, exist_ok=True)
     (skill_dir / "knowledge" / "photos").mkdir(parents=True, exist_ok=True)
 
-    # 写入 persona.md
+    # Write persona.md
     (skill_dir / "persona.md").write_text(persona_content, encoding="utf-8")
 
-    # 生成并写入 SKILL.md
+    # Generate and write SKILL.md
     name = meta.get("name", slug)
     language = normalize_language(language)
     identity = build_identity_string(meta, language)
@@ -202,7 +202,7 @@ def create_ex_skill(
     )
     (skill_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
 
-    # 写入 meta.json
+    # Write meta.json
     now = datetime.now(timezone.utc).isoformat()
     meta["slug"] = slug
     meta.setdefault("created_at", now)
@@ -228,7 +228,7 @@ def update_ex_skill(
     new_message_count: int = 0,
     language: Optional[str] = None,
 ) -> str:
-    """更新现有 Skill，先存档当前版本，再写入更新"""
+    """Update an existing skill by archiving current files, then writing new output."""
 
     meta_path = skill_dir / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -241,7 +241,7 @@ def update_ex_skill(
         version_num = 2
     new_version = f"v{version_num}"
 
-    # 存档当前版本
+    # Archive current version
     version_dir = skill_dir / "versions" / current_version
     version_dir.mkdir(parents=True, exist_ok=True)
     for fname in ("SKILL.md", "persona.md"):
@@ -249,7 +249,7 @@ def update_ex_skill(
         if src.exists():
             shutil.copy2(src, version_dir / fname)
 
-    # 应用 persona patch 或 correction
+    # Apply persona patch or structured correction
     if persona_patch or correction:
         current_persona = (skill_dir / "persona.md").read_text(encoding="utf-8")
 
@@ -292,11 +292,11 @@ def update_ex_skill(
 
         (skill_dir / "persona.md").write_text(new_persona, encoding="utf-8")
 
-    # 更新消息数量
+    # Update message count
     if new_message_count:
         meta["message_count"] = meta.get("message_count", 0) + new_message_count
 
-    # 重新生成 SKILL.md
+    # Rebuild SKILL.md
     persona_content = (skill_dir / "persona.md").read_text(encoding="utf-8")
     name = meta.get("name", skill_dir.name)
     identity = build_identity_string(meta, preferred_language)
@@ -309,7 +309,7 @@ def update_ex_skill(
     )
     (skill_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
 
-    # 更新 meta
+    # Update metadata
     meta["version"] = new_version
     meta["preferred_language"] = preferred_language
     meta["language"] = preferred_language
@@ -366,14 +366,15 @@ def main() -> None:
     )
     parser.add_argument(
         "--lang",
-        choices=["zh", "en"],
-        default="zh",
-        help="CLI and generation language (zh or en)",
+        choices=["auto", "zh", "en"],
+        default="auto",
+        help="CLI and generation language (auto, zh, or en)",
     )
 
     args = parser.parse_args()
     base_dir = Path(args.base_dir).expanduser()
-    lang = normalize_language(args.lang)
+    lang_override = None if args.lang == "auto" else normalize_language(args.lang)
+    lang = lang_override or "zh"
 
     if args.action == "list":
         exes = list_exes(base_dir)
@@ -411,9 +412,10 @@ def main() -> None:
         if args.persona:
             persona_content = Path(args.persona).read_text(encoding="utf-8")
 
-        pref_lang = get_preferred_language(meta, lang)
+        pref_lang = get_preferred_language(meta, lang_override)
         skill_dir = create_ex_skill(base_dir, slug, meta, persona_content, pref_lang)
-        if lang == "en":
+        create_lang = lang_override or pref_lang
+        if create_lang == "en":
             print(f"✅ Skill created: {skill_dir}")
             print(f"   Trigger: /{slug}")
         else:

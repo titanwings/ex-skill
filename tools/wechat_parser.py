@@ -1,33 +1,33 @@
 #!/usr/bin/env python3
 """
-聊天记录解析器（微信 + iMessage）
+Chat parser (WeChat + iMessage).
 
-支持平台：
-  - 微信 PC 端（Windows）：解密后的 MSG*.db
-  - iMessage（macOS）：~/Library/Messages/chat.db
+Supported platforms:
+    - WeChat Desktop (Windows): decrypted MSG*.db files
+    - iMessage (macOS): ~/Library/Messages/chat.db
 
-用法：
-  # 微信 — 从解密后的 db 目录提取
-  python wechat_parser.py --db-dir ./decrypted/ --target "柳智敏" --output messages.txt
+Usage:
+    # WeChat - extract from a decrypted DB directory
+    python wechat_parser.py --db-dir ./decrypted/ --target "contact_name" --output messages.txt
 
-  # 微信 — 列出所有联系人
-  python wechat_parser.py --db-dir ./decrypted/ --list-contacts
+    # WeChat - list all contacts
+    python wechat_parser.py --db-dir ./decrypted/ --list-contacts
 
-  # iMessage — 从 macOS chat.db 提取
-  python wechat_parser.py --imessage --db ~/Library/Messages/chat.db \
-      --target "+1xxxxxxxxxx" --output messages.txt
+    # iMessage - extract from macOS chat.db
+    python wechat_parser.py --imessage --db ~/Library/Messages/chat.db \
+            --target "+1xxxxxxxxxx" --output messages.txt
 
-  # iMessage — 列出所有 iMessage 联系人
-  python wechat_parser.py --imessage --db ~/Library/Messages/chat.db --list-contacts
+    # iMessage - list all iMessage contacts
+    python wechat_parser.py --imessage --db ~/Library/Messages/chat.db --list-contacts
 
-  # 从导出的文本文件解析（通用）
-  python wechat_parser.py --txt ./chat_export.txt --target "柳智敏" --output messages.txt
+    # Parse an exported text file (generic)
+    python wechat_parser.py --txt ./chat_export.txt --target "contact_name" --output messages.txt
 
-依赖：
-  pip install sqlite3（标准库，无需额外安装）
+Dependencies:
+    sqlite3 (Python standard library, no extra install needed)
 
-iMessage 授权：
-  macOS 需要在「系统偏好设置 → 隐私 → 完全磁盘访问权限」中添加终端/Python
+iMessage access note:
+    On macOS, grant Full Disk Access to your terminal/Python process.
 """
 
 import sqlite3
@@ -53,9 +53,9 @@ def tr(zh: str, en: str) -> str:
     return en if CLI_LANG == "en" else zh
 
 
-# ─── 微信 PC 数据库结构 ─────────────────────────────────────────────────────────
+# ─── WeChat Desktop database structure ─────────────────────────────────────────
 
-# MSG*.db 中的消息表结构（微信 3.x）
+# Message table structure in MSG*.db (WeChat 3.x)
 MSG_QUERY = """
 SELECT
     m.localId,
@@ -69,11 +69,11 @@ FROM MSG m
 LEFT JOIN Name2ID n ON n.UsrName = (
     SELECT UsrName FROM Name2ID WHERE _id = m.TalkerId LIMIT 1
 )
-WHERE m.Type = 1  -- 1 = 文本消息
+WHERE m.Type = 1  -- 1 = text message
 ORDER BY m.CreateTime ASC
 """
 
-# 更通用的查询（兼容不同版本）
+# More generic query (compatible across versions)
 MSG_QUERY_SIMPLE = """
 SELECT
     localId,
@@ -86,7 +86,7 @@ WHERE Type = 1
 ORDER BY CreateTime ASC
 """
 
-# MicroMsg.db 中的联系人表
+# Contacts table in MicroMsg.db
 CONTACT_QUERY = """
 SELECT
     UserName,
@@ -95,19 +95,19 @@ SELECT
     NickName,
     Type
 FROM Contact
-WHERE Type != 4   -- 4 = 已删除
+WHERE Type != 4   -- 4 = deleted
 ORDER BY NickName
 """
 
 
-# ─── 数据库解析 ─────────────────────────────────────────────────────────────────
+# ─── Database parsing ───────────────────────────────────────────────────────────
 
 def open_db(db_path: str) -> sqlite3.Connection | None:
-    """打开 SQLite 数据库（只读）"""
+    """Open a SQLite database in read-only mode."""
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
-        # 快速验证
+        # Quick sanity check
         conn.execute("SELECT name FROM sqlite_master LIMIT 1")
         return conn
     except sqlite3.DatabaseError as e:
@@ -117,13 +117,13 @@ def open_db(db_path: str) -> sqlite3.Connection | None:
 
 
 def get_tables(conn: sqlite3.Connection) -> list[str]:
-    """获取数据库中所有表名"""
+    """Get all table names in a database."""
     rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     return [row[0] for row in rows]
 
 
 def list_contacts(db_dir: str) -> list[dict]:
-    """列出所有联系人（从 MicroMsg.db）"""
+    """List all contacts from MicroMsg.db."""
     micro_db = Path(db_dir) / "MicroMsg.db"
     if not micro_db.exists():
         print(tr("未找到 MicroMsg.db，尝试从消息数据库推断联系人...", "MicroMsg.db not found, trying to infer contacts from message databases..."), file=sys.stderr)
@@ -151,11 +151,11 @@ def list_contacts(db_dir: str) -> list[dict]:
 
 
 def find_contact_wxid(db_dir: str, target_name: str) -> str | None:
-    """根据名称（微信名/备注名/wxid）找到 wxid"""
+    """Find a contact wxid by name (nickname/remark/wxid)."""
     contacts = list_contacts(db_dir)
     target_lower = target_name.lower()
 
-    # 精确匹配
+    # Exact match
     for c in contacts:
         if (target_lower == c["wxid"].lower() or
                 target_lower == c["remark"].lower() or
@@ -163,7 +163,7 @@ def find_contact_wxid(db_dir: str, target_name: str) -> str | None:
                 target_lower == c["alias"].lower()):
             return c["wxid"]
 
-    # 模糊匹配
+    # Fuzzy match
     for c in contacts:
         if (target_lower in c["wxid"].lower() or
                 target_lower in c["remark"].lower() or
@@ -178,7 +178,7 @@ def find_contact_wxid(db_dir: str, target_name: str) -> str | None:
 
 
 def extract_messages_from_db(db_path: str, target_wxid: str | None = None) -> list[dict]:
-    """从单个 MSG*.db 提取消息"""
+    """Extract messages from a single MSG*.db file."""
     conn = open_db(db_path)
     if not conn:
         return []
@@ -190,7 +190,7 @@ def extract_messages_from_db(db_path: str, target_wxid: str | None = None) -> li
         if "MSG" not in tables:
             return []
 
-        # 尝试带 TalkerId 的完整查询
+        # Try the full query with TalkerId join first
         try:
             if "Name2ID" in tables:
                 rows = conn.execute("""
@@ -217,11 +217,11 @@ def extract_messages_from_db(db_path: str, target_wxid: str | None = None) -> li
             if isinstance(row, sqlite3.Row):
                 row = dict(row)
 
-            # 过滤目标联系人（精确相等，不做子串匹配）
+            # Filter by the target contact (exact match only)
             talker = row.get("talker_wxid") or ""
             if target_wxid:
                 if not talker:
-                    # Name2ID 关联失败，talker 为空，无法过滤，跳过此条
+                    # Name2ID join failed; cannot filter this row reliably.
                     continue
                 if talker != target_wxid:
                     continue
@@ -230,11 +230,11 @@ def extract_messages_from_db(db_path: str, target_wxid: str | None = None) -> li
             if not content.strip():
                 continue
 
-            # 跳过系统消息
+            # Skip system/media placeholder messages
             if content.strip() in ["[图片]", "[语音]", "[文件]", "[视频]", "[撤回了一条消息]", ""]:
                 continue
 
-            # 过滤 XML 富文本（分享链接、小程序等），提取文字
+            # For XML-rich content (shares/miniprograms), extract readable text.
             if content.strip().startswith("<"):
                 content = _extract_text_from_xml(content)
                 if not content:
@@ -262,30 +262,30 @@ def extract_messages_from_db(db_path: str, target_wxid: str | None = None) -> li
 
 
 def _extract_text_from_xml(xml_content: str) -> str:
-    """从微信 XML 富文本消息中提取可读文字"""
-    # 提取 <title> 标签内容
+    """Extract readable text from WeChat XML-rich messages."""
+    # Extract <title> text
     m = re.search(r"<title[^>]*>([^<]+)</title>", xml_content)
     if m:
-        return f"[分享] {m.group(1).strip()}"
-    # 提取 <des> 标签内容
+        return tr(f"[分享] {m.group(1).strip()}", f"[Share] {m.group(1).strip()}")
+    # Extract <des> text
     m = re.search(r"<des[^>]*>([^<]+)</des>", xml_content)
     if m:
-        return f"[分享] {m.group(1).strip()}"
+        return tr(f"[分享] {m.group(1).strip()}", f"[Share] {m.group(1).strip()}")
     return ""
 
 
 def extract_messages_from_dir(db_dir: str, target_wxid: str | None = None) -> list[dict]:
-    """从目录中所有 MSG*.db 提取消息，合并并按时间排序"""
+    """Extract messages from all MSG*.db files in a directory and sort by time."""
     db_dir = Path(db_dir)
     all_messages = []
 
-    # 查找 MSG*.db 文件
+    # Find MSG*.db files
     db_files = []
     for i in range(20):
         p = db_dir / f"MSG{i}.db"
         if p.exists():
             db_files.append(p)
-    # 也检查 Multi 子目录
+    # Also scan the Multi subdirectory
     multi_dir = db_dir / "Multi"
     if multi_dir.exists():
         for i in range(20):
@@ -302,23 +302,23 @@ def extract_messages_from_dir(db_dir: str, target_wxid: str | None = None) -> li
         all_messages.extend(msgs)
         print(tr(f"  {db_file.name}: {len(msgs)} 条消息", f"  {db_file.name}: {len(msgs)} messages"))
 
-    # 按时间排序
+    # Sort by timestamp
     all_messages.sort(key=lambda x: x["timestamp"])
     return all_messages
 
 
 def parse_txt_export(file_path: str, target_name: str) -> list[dict]:
-    """解析手动导出的文本格式（兼容多种格式）"""
+    """Parse manually exported text chat files across common formats."""
     messages = []
 
     with open(file_path, "r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
 
-    # 尝试匹配格式：2024-01-01 10:00 发送人：消息
+    # Format: 2024-01-01 10:00 Sender: Message
     pattern_datetime_sender = re.compile(
         r"^(?P<time>\d{4}[-/]\d{1,2}[-/]\d{1,2}[\s\d:]+)\s+(?P<sender>.+?)[:：]\s*(?P<content>.+)$"
     )
-    # 也兼容 "发送人 2024-01-01 10:00" 格式
+    # Also supports: "Sender 2024-01-01 10:00"
     pattern_sender_datetime = re.compile(
         r"^(?P<sender>.+?)\s+(?P<time>\d{4}[-/]\d{1,2}[-/]\d{1,2}[\s\d:]+)\s*$"
     )
@@ -349,17 +349,17 @@ def parse_txt_export(file_path: str, target_name: str) -> list[dict]:
             current_sender = m.group("sender").strip()
             pending_content_lines = [m.group("content").strip()]
         elif line.strip() and current_sender:
-            # 多行消息的续行
+            # Continuation lines for multi-line messages
             pending_content_lines.append(line.strip())
 
     flush_pending()
     return messages
 
 
-# ─── iMessage 解析 ────────────────────────────────────────────────────────────
+# ─── iMessage parsing ──────────────────────────────────────────────────────────
 
 def list_imessage_contacts(db_path: str) -> list[dict]:
-    """列出 iMessage 数据库中的所有联系人"""
+    """List all contacts in an iMessage database."""
     conn = open_db(db_path)
     if not conn:
         return []
@@ -383,14 +383,14 @@ def list_imessage_contacts(db_path: str) -> list[dict]:
 
 def extract_imessage_messages(db_path: str, target_handle: str) -> list[dict]:
     """
-    从 macOS iMessage chat.db 提取指定联系人的消息。
+        Extract messages for a target contact from macOS iMessage chat.db.
 
-    chat.db 结构：
-      - message 表：ROWID, text, is_from_me, date (Apple epoch), handle_id
-      - handle 表：ROWID, id (phone/email)
-      - chat_message_join / chat_handle_join：多对多关联
+        chat.db structure:
+            - message table: ROWID, text, is_from_me, date (Apple epoch), handle_id
+            - handle table: ROWID, id (phone/email)
+            - chat_message_join / chat_handle_join: many-to-many links
 
-    Apple epoch = 秒数从 2001-01-01 起（比 Unix epoch 少 978307200 秒）
+        Apple epoch starts at 2001-01-01 (Unix offset: 978307200 seconds).
     """
     conn = open_db(db_path)
     if not conn:
@@ -400,7 +400,7 @@ def extract_imessage_messages(db_path: str, target_handle: str) -> list[dict]:
 
     messages = []
     try:
-        # 找到目标 handle 的 ROWID（支持模糊匹配）
+        # Find target handle ROWIDs (supports fuzzy matching)
         handle_rows = conn.execute(
             "SELECT ROWID, id FROM handle WHERE id LIKE ?",
             (f"%{target_handle}%",)
@@ -446,13 +446,13 @@ def extract_imessage_messages(db_path: str, target_handle: str) -> list[dict]:
             if not text.strip():
                 continue
 
-            # 过滤系统消息（通常以特殊 unicode 字符开头）
+            # Skip system rows (often special unicode placeholders)
             if text.startswith("\ufffc"):  # attachment placeholder
                 continue
 
-            # 计算时间戳
+            # Convert timestamp
             raw_date = row["date"] or 0
-            # iMessage date 在 iOS 11+ 是纳秒，早期是秒
+            # iOS 11+ uses nanoseconds; older versions use seconds.
             if raw_date > 1e12:
                 unix_ts = raw_date / 1e9 + APPLE_EPOCH_OFFSET
             else:
@@ -480,14 +480,14 @@ def extract_imessage_messages(db_path: str, target_handle: str) -> list[dict]:
     return messages
 
 
-# ─── 消息分类 ──────────────────────────────────────────────────────────────────
+# ─── Message categorization ────────────────────────────────────────────────────
 
 CONFLICT_KEYWORDS = [
-    # 中文
+    # Chinese
     "生气", "吵架", "分手", "算了", "随便", "不想说了", "烦", "你走",
     "不理你", "别找我", "不要了", "受够了", "够了", "不可能", "冷战",
     "对不起", "我错了", "不是那个意思", "误会", "委屈", "哭",
-    # 英文（iMessage）
+    # English (iMessage)
     "break up", "breakup", "i'm done", "we're done", "leave me alone",
     "i'm sorry", "sorry", "i was wrong", "stop texting", "don't text",
     "fighting", "argument", "upset", "angry", "hurt", "crying",
@@ -495,11 +495,11 @@ CONFLICT_KEYWORDS = [
 ]
 
 SWEET_KEYWORDS = [
-    # 中文
+    # Chinese
     "想你", "喜欢你", "爱你", "宝", "亲爱的", "么么", "晚安",
     "早安", "吃了吗", "到家了吗", "在干嘛", "你在吗", "想见你",
     "好想", "心动", "开心", "幸福", "快乐",
-    # 英文（iMessage）
+    # English (iMessage)
     "miss you", "love you", "i love", "good morning", "good night",
     "thinking of you", "how are you", "are you okay", "cute", "sweet",
     "made me think of you", "can't stop thinking", "wanna see you",
@@ -507,10 +507,10 @@ SWEET_KEYWORDS = [
 
 
 def classify_messages(messages: list[dict], target_name: str = "them") -> dict:
-    """将消息分类：长消息、冲突消息、甜蜜消息、日常消息"""
-    # 只分析 TA 发的消息（sender == "them"）
+    """Categorize messages into long, conflict, sweet, and daily buckets."""
+    # Analyze only messages sent by TA (sender == "them")
     their_messages = [m for m in messages if m["sender"] == "them"]
-    all_messages = messages  # 保留完整对话（包括你发的）
+    all_messages = messages  # Keep full conversation (including your messages)
 
     long_msgs = []
     conflict_msgs = []
@@ -536,22 +536,22 @@ def classify_messages(messages: list[dict], target_name: str = "them") -> dict:
         "daily_messages": daily_msgs,
         "total_their_count": len(their_messages),
         "total_count": len(all_messages),
-        "all_messages": all_messages,  # 完整对话（保留上下文用）
+        "all_messages": all_messages,  # Keep complete context for downstream analysis
     }
 
 
 def extract_conversation_threads(messages: list[dict], window_size: int = 10) -> list[list[dict]]:
     """
-    提取有意义的对话片段（两人来回的连续消息）。
-    用于分析冲突链和关系动态。
+    Extract meaningful conversation turns (back-and-forth windows).
+    Useful for conflict-chain and relationship-dynamics analysis.
     """
     threads = []
     i = 0
     while i < len(messages):
-        # 找到对话开始点（有来有回）
+        # Find potential conversation starts with both senders present.
         chunk = messages[i : i + window_size]
         senders = set(m["sender"] for m in chunk)
-        if len(senders) >= 2:  # 双向对话
+        if len(senders) >= 2:  # two-way conversation
             threads.append(chunk)
             i += window_size
         else:
@@ -559,10 +559,10 @@ def extract_conversation_threads(messages: list[dict], window_size: int = 10) ->
     return threads
 
 
-# ─── 输出格式化 ────────────────────────────────────────────────────────────────
+# ─── Output formatting ─────────────────────────────────────────────────────────
 
-def format_output(target_name: str, classified: dict, include_context: bool = True, source: str = "微信", language: str = "zh") -> str:
-    """格式化输出供 AI 分析"""
+def format_output(target_name: str, classified: dict, include_context: bool = True, source: str = "WeChat", language: str = "zh") -> str:
+    """Format parsed output for downstream AI analysis."""
     is_en = normalize_language(language) == "en"
     i_label = "Me" if is_en else "我"
     lines = [
@@ -606,14 +606,21 @@ def format_output(target_name: str, classified: dict, include_context: bool = Tr
         lines.append(f"{ts}{msg['content']}")
         lines.append("")
 
+    daily_count = len(classified["daily_messages"])
+    daily_heading = (
+        f"Daily Chat (style reference, {daily_count} messages, full output)"
+        if is_en
+        else f"日常闲聊（风格参考，共 {daily_count} 条，全部输出）"
+    )
+
     lines += [
         "---",
         "",
-        f"## {(f'Daily Chat (style reference, {len(classified['daily_messages'])} messages, full output)' if is_en else f'日常闲聊（风格参考，共 {len(classified['daily_messages'])} 条，全部输出）')}",
+        f"## {daily_heading}",
         "",
     ]
 
-    for msg in classified["daily_messages"]:  # 不截断，全部输出
+    for msg in classified["daily_messages"]:  # keep full output
         ts = f"[{msg['timestamp']}] " if msg.get("timestamp") else ""
         lines.append(f"{ts}{msg['content']}")
 
@@ -627,7 +634,7 @@ def format_output(target_name: str, classified: dict, include_context: bool = Tr
             ("(Format: [time] sender: content)" if is_en else "（格式：[时间] 发送方: 内容）"),
             "",
         ]
-        for msg in all_msgs:  # 不截断，全部输出
+        for msg in all_msgs:  # keep full output
             sender_label = target_name if msg["sender"] == "them" else i_label
             ts = f"[{msg['timestamp']}] " if msg.get("timestamp") else ""
             lines.append(f"{ts}{sender_label}: {msg['content']}")
@@ -636,7 +643,7 @@ def format_output(target_name: str, classified: dict, include_context: bool = Tr
 
 
 def print_contact_list(contacts: list[dict], is_imessage: bool = False, language: str = "zh"):
-    """打印联系人列表"""
+    """Print contact list in the selected language."""
     is_en = normalize_language(language) == "en"
     if not contacts:
         print("No contacts found" if is_en else "未找到联系人数据")
@@ -655,7 +662,7 @@ def print_contact_list(contacts: list[dict], is_imessage: bool = False, language
             print(f"{c['wxid']:<30} {c['remark']:<20} {c['nickname']:<20}")
 
 
-# ─── 主程序 ───────────────────────────────────────────────────────────────────
+# ─── Main entrypoint ───────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(
@@ -697,10 +704,10 @@ Examples:
     CLI_LANG = normalize_language(args.lang)
     source_label = "iMessage" if args.imessage else ("WeChat" if CLI_LANG == "en" else "微信")
 
-    # ── iMessage 模式 ──────────────────────────────────────────────────────────
+    # ── iMessage mode ──────────────────────────────────────────────────────────
     if args.imessage:
         if not args.db:
-            # 默认路径
+            # Default path
             default_path = Path.home() / "Library" / "Messages" / "chat.db"
             if default_path.exists():
                 args.db = str(default_path)
@@ -723,9 +730,9 @@ Examples:
         print(tr(f"从 iMessage 数据库提取：{args.db}", f"Extracting from iMessage database: {args.db}"))
         messages = extract_imessage_messages(args.db, args.target)
 
-    # ── 微信模式 ───────────────────────────────────────────────────────────────
+    # ── WeChat mode ────────────────────────────────────────────────────────────
     else:
-        # 列出联系人
+        # List contacts
         if args.list_contacts:
             if not args.db_dir:
                 print(tr("错误：--list-contacts 需要 --db-dir", "Error: --list-contacts requires --db-dir."), file=sys.stderr)
@@ -791,7 +798,7 @@ Examples:
     if their_count < 200:
         print(tr(f"⚠️  警告：TA 的消息只有 {their_count} 条，样本偏少，生成的人格可信度较低", f"⚠️  Warning: TA only has {their_count} messages. Sample size is small and persona reliability may be low."))
 
-    # 输出
+    # Output
     if args.json:
         output_content = json.dumps(messages, ensure_ascii=False, indent=2)
     else:
