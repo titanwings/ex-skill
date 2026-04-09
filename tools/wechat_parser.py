@@ -666,42 +666,69 @@ def print_contact_list(contacts: list[dict], is_imessage: bool = False, language
 # ─── Main entrypoint ───────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Chat parser (WeChat + iMessage)",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+    global CLI_LANG
+
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--lang", choices=["zh", "en"], default="zh")
+    pre_args, _ = pre_parser.parse_known_args()
+    CLI_LANG = normalize_language(pre_args.lang)
+
+    epilog_en = """
 Examples:
   # WeChat - list contacts
   python wechat_parser.py --db-dir ./decrypted/ --list-contacts
 
   # WeChat - extract one contact's messages
-  python wechat_parser.py --db-dir ./decrypted/ --target "contact_name" --output messages.txt
+  python wechat_parser.py --db-dir ./decrypted/ --target \"contact_name\" --output messages.txt
 
   # iMessage - list contacts (macOS)
   python wechat_parser.py --imessage --db ~/Library/Messages/chat.db --list-contacts
 
   # iMessage - extract messages
   python wechat_parser.py --imessage --db ~/Library/Messages/chat.db \\
-      --target "+1xxxxxxxxxx" --output messages.txt
+      --target \"+1xxxxxxxxxx\" --output messages.txt
 
   # Parse exported text (generic)
-  python wechat_parser.py --txt ./chat.txt --target "contact_name" --output messages.txt
+  python wechat_parser.py --txt ./chat.txt --target \"contact_name\" --output messages.txt
         """
+
+    epilog_zh = """
+示例：
+  # 微信 - 列出联系人
+  python wechat_parser.py --db-dir ./decrypted/ --list-contacts
+
+  # 微信 - 提取某个联系人的消息
+  python wechat_parser.py --db-dir ./decrypted/ --target \"联系人名称\" --output messages.txt
+
+  # iMessage - 列出联系人（macOS）
+  python wechat_parser.py --imessage --db ~/Library/Messages/chat.db --list-contacts
+
+  # iMessage - 提取消息
+  python wechat_parser.py --imessage --db ~/Library/Messages/chat.db \\
+      --target \"+1xxxxxxxxxx\" --output messages.txt
+
+  # 解析导出的文本聊天记录
+  python wechat_parser.py --txt ./chat.txt --target \"联系人名称\" --output messages.txt
+        """
+
+    parser = argparse.ArgumentParser(
+        description=tr("聊天记录解析器（微信 + iMessage）", "Chat parser (WeChat + iMessage)"),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=epilog_en if CLI_LANG == "en" else epilog_zh,
     )
 
-    parser.add_argument("--imessage", action="store_true", help="Use iMessage mode (macOS chat.db)")
-    parser.add_argument("--db-dir", help="Directory containing decrypted WeChat databases")
-    parser.add_argument("--db", help="Single .db file (WeChat or iMessage)")
-    parser.add_argument("--txt", help="Path to exported text chat file")
-    parser.add_argument("--target", help="Target contact (WeChat name/remark, or iMessage phone/Apple ID)")
-    parser.add_argument("--output", default=None, help="Output file path (default: print to stdout)")
-    parser.add_argument("--list-contacts", action="store_true", help="List all contacts")
-    parser.add_argument("--no-context", action="store_true", help="Exclude full conversation context")
-    parser.add_argument("--json", action="store_true", help="Output raw messages in JSON")
-    parser.add_argument("--lang", choices=["zh", "en"], default="zh", help="CLI/output language")
+    parser.add_argument("--imessage", action="store_true", help=tr("使用 iMessage 模式（macOS chat.db）", "Use iMessage mode (macOS chat.db)"))
+    parser.add_argument("--db-dir", help=tr("解密后微信数据库目录", "Directory containing decrypted WeChat databases"))
+    parser.add_argument("--db", help=tr("单个 .db 文件路径（微信或 iMessage）", "Single .db file (WeChat or iMessage)"))
+    parser.add_argument("--txt", help=tr("导出的文本聊天文件路径", "Path to exported text chat file"))
+    parser.add_argument("--target", help=tr("目标联系人（微信名/备注名，或 iMessage 手机号/Apple ID）", "Target contact (WeChat name/remark, or iMessage phone/Apple ID)"))
+    parser.add_argument("--output", default=None, help=tr("输出文件路径（默认打印到标准输出）", "Output file path (default: print to stdout)"))
+    parser.add_argument("--list-contacts", action="store_true", help=tr("列出所有联系人", "List all contacts"))
+    parser.add_argument("--no-context", action="store_true", help=tr("不输出完整对话上下文", "Exclude full conversation context"))
+    parser.add_argument("--json", action="store_true", help=tr("以 JSON 输出原始消息", "Output raw messages in JSON"))
+    parser.add_argument("--lang", choices=["zh", "en"], default="zh", help=tr("CLI/输出语言", "CLI/output language"))
 
     args = parser.parse_args()
-    global CLI_LANG
     CLI_LANG = normalize_language(args.lang)
     source_label = "iMessage" if args.imessage else ("WeChat" if CLI_LANG == "en" else "微信")
 
