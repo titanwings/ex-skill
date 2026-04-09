@@ -2,8 +2,45 @@
 """
 WeChat desktop database decryptor (Windows + macOS).
 
-Extracts SQLCipher keys from a running WeChat process and decrypts local
-message databases for personal export workflows.
+EN:
+    Purpose:
+        Extract SQLCipher keys from a running WeChat process and decrypt local
+        message databases for personal export workflows.
+
+    Prerequisites:
+        - WeChat must be running and logged in before memory key extraction.
+        - On macOS, grant Full Disk Access to terminal/Python.
+        - On some macOS setups, SIP may block memory attach/read operations.
+
+    Dependencies:
+        - psutil (process discovery)
+        - pymem (Windows memory extraction)
+        - pycryptodome (SQLCipher-compatible decryption)
+
+    Safety notes:
+        - Personal-use only. Follow local laws and platform terms.
+        - Protect extracted keys and decrypted databases; they contain private data.
+        - If memory extraction fails, extract the key manually and pass --key.
+
+ZH:
+    用途：
+        从运行中的微信进程提取 SQLCipher 密钥，并解密本地消息数据库，
+        用于个人导出场景。
+
+    前置条件：
+        - 提取内存密钥前，微信必须已打开且已登录。
+        - macOS 需要给终端/Python 授予完全磁盘访问权限。
+        - 部分 macOS 环境下，SIP 可能阻止内存附加/读取。
+
+    依赖：
+        - psutil（进程查找）
+        - pymem（Windows 内存提取）
+        - pycryptodome（SQLCipher 参数解密）
+
+    安全提示：
+        - 仅限个人合法用途，请遵守当地法律与平台条款。
+        - 妥善保护提取出的密钥与解密后的数据库，其中包含隐私数据。
+        - 若内存提取失败，可手动提取密钥并通过 --key 指定。
 """
 
 import os
@@ -527,10 +564,7 @@ def main():
         print(tr("错误：此工具仅支持 Windows 和 macOS", "Error: this tool supports only Windows and macOS"), file=sys.stderr)
         sys.exit(1)
 
-    parser = argparse.ArgumentParser(
-        description="WeChat desktop database decryptor",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+    epilog_en = """
 Examples:
   # Extract key from memory and decrypt all databases
   python wechat_decryptor.py --db-dir <MSG_DIR> --output ./decrypted/
@@ -544,14 +578,34 @@ Examples:
   # Validate key against a DB
   python wechat_decryptor.py --key "abcdef1234..." --test-db "./MSG0.db"
         """
+
+    epilog_zh = """
+示例：
+  # 从内存提取密钥并解密全部数据库
+  python wechat_decryptor.py --db-dir <MSG目录> --output ./decrypted/
+
+  # 仅打印密钥
+  python wechat_decryptor.py --find-key-only
+
+  # 使用已知密钥解密单个数据库
+  python wechat_decryptor.py --key "abcdef1234..." --db "./MSG0.db" --output "./out/"
+
+  # 使用数据库验证密钥
+  python wechat_decryptor.py --key "abcdef1234..." --test-db "./MSG0.db"
+        """
+
+    parser = argparse.ArgumentParser(
+        description=tr("微信桌面数据库解密工具", "WeChat desktop database decryptor"),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=epilog_en if CLI_LANG == "en" else epilog_zh,
     )
-    parser.add_argument("--db-dir", help="Directory containing WeChat message databases")
-    parser.add_argument("--db", help="Path to a single database file")
-    parser.add_argument("--output", default="./decrypted", help="Output directory for decrypted files (default: ./decrypted)")
-    parser.add_argument("--key", help="Known key in hex format (skip memory extraction)")
-    parser.add_argument("--find-key-only", action="store_true", help="Print extracted key only; do not decrypt")
-    parser.add_argument("--test-db", help="Validate key against one DB file (use with --key)")
-    parser.add_argument("--lang", choices=["zh", "en"], default="zh", help="CLI language")
+    parser.add_argument("--db-dir", help=tr("微信消息数据库目录", "Directory containing WeChat message databases"))
+    parser.add_argument("--db", help=tr("单个数据库文件路径", "Path to a single database file"))
+    parser.add_argument("--output", default="./decrypted", help=tr("解密文件输出目录（默认：./decrypted）", "Output directory for decrypted files (default: ./decrypted)"))
+    parser.add_argument("--key", help=tr("已知密钥（十六进制，跳过内存提取）", "Known key in hex format (skip memory extraction)"))
+    parser.add_argument("--find-key-only", action="store_true", help=tr("仅输出提取到的密钥，不执行解密", "Print extracted key only; do not decrypt"))
+    parser.add_argument("--test-db", help=tr("用单个数据库测试密钥（需配合 --key）", "Validate key against one DB file (use with --key)"))
+    parser.add_argument("--lang", choices=["zh", "en"], default="zh", help=tr("CLI 语言", "CLI language"))
 
     args = parser.parse_args()
     CLI_LANG = normalize_language(args.lang)

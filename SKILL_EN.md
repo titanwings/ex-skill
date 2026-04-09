@@ -55,11 +55,16 @@ Offer three methods:
 - Method C: Paste chat text/screenshots manually
 
 Method A commands:
-python tools/wechat_decryptor.py --find-key-only --lang en
-python tools/wechat_parser.py --db-dir ./decrypted/ --target "<wechat_name>" --output messages.txt --lang en
+python tools/wechat_decryptor.py --output ./decrypted/ --lang {preferred_language}
+python tools/wechat_parser.py --db-dir ./decrypted/ --target "<wechat_name>" --output messages.txt --lang {preferred_language}
+
+If auto decryption fails, use manual-key fallback:
+python tools/wechat_decryptor.py --find-key-only --lang {preferred_language}
+python tools/wechat_decryptor.py --key "<key_hex>" --db-dir "<msg_dir>" --output ./decrypted/ --lang {preferred_language}
+python tools/wechat_parser.py --db-dir ./decrypted/ --target "<wechat_name>" --output messages.txt --lang {preferred_language}
 
 Method B command:
-python tools/wechat_parser.py --imessage --target "<phone_or_apple_id>" --output messages.txt --lang en
+python tools/wechat_parser.py --imessage --target "<phone_or_apple_id>" --output messages.txt --lang {preferred_language}
 
 ## Step 3: Analysis
 
@@ -84,7 +89,7 @@ If preferred_language=en, preview content must be fully English.
 ## Step 5: Write files
 
 Run:
-python tools/skill_writer.py --action create --slug <slug> --meta meta.json --persona persona.md --base-dir ./exes --lang en
+python tools/skill_writer.py --action create --slug <slug> --meta meta.json --persona persona.md --base-dir ./exes --lang {preferred_language}
 
 Generated structure:
 exes/<slug>/
@@ -115,5 +120,5 @@ Behavior correction:
 - en: prompts_en/correction_handler.md
 
 Version actions:
-python tools/version_manager.py --action list --slug <slug> --lang en
-python tools/version_manager.py --action rollback --slug <slug> --version v2 --lang en
+python tools/version_manager.py --action list --slug <slug> --lang {preferred_language}
+python tools/version_manager.py --action rollback --slug <slug> --version v2 --lang {preferred_language}

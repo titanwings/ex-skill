@@ -106,13 +106,20 @@ I can help you rebuild your ex's digital persona. I will ask 3 quick questions, 
 
 用户选择方式 A 时，自动执行：
 ```bash
-python tools/wechat_decryptor.py --find-key-only
-python tools/wechat_parser.py --db-dir ./decrypted/ --target "{用户提供的微信名}" --output messages.txt
+python tools/wechat_decryptor.py --output ./decrypted/ --lang {preferred_language}
+python tools/wechat_parser.py --db-dir ./decrypted/ --target "{用户提供的微信名}" --output messages.txt --lang {preferred_language}
+```
+
+如果自动解密失败，则回退为手动密钥流程：
+```bash
+python tools/wechat_decryptor.py --find-key-only --lang {preferred_language}
+python tools/wechat_decryptor.py --key "{key_hex}" --db-dir "{MSG目录}" --output ./decrypted/ --lang {preferred_language}
+python tools/wechat_parser.py --db-dir ./decrypted/ --target "{用户提供的微信名}" --output messages.txt --lang {preferred_language}
 ```
 
 用户选择方式 B 时，自动执行：
 ```bash
-python tools/wechat_parser.py --imessage --target "{用户提供的手机号或Apple ID}" --output messages.txt
+python tools/wechat_parser.py --imessage --target "{用户提供的手机号或Apple ID}" --output messages.txt --lang {preferred_language}
 ```
 
 采集完成后自动进入 Step 3，无需用户手动操作。
@@ -187,7 +194,8 @@ python tools/skill_writer.py --action create \
   --slug {slug} \
   --meta meta.json \
   --persona persona.md \
-  --base-dir ./exes
+  --base-dir ./exes \
+  --lang {preferred_language}
 ```
 
 创建目录结构：
@@ -227,7 +235,7 @@ exes/{slug}/
 
 收到 `/list-exes` 时：
 ```bash
-python tools/skill_writer.py --action list --base-dir ./exes
+python tools/skill_writer.py --action list --base-dir ./exes --lang {preferred_language}
 ```
 输出所有已建前任的列表（名字、关系阶段、版本、消息数、最后更新）。无数量上限。
 
@@ -247,10 +255,10 @@ python tools/skill_writer.py --action list --base-dir ./exes
 
 ### 版本管理
 用户说"查看版本历史"：
-→ 调用 `python tools/version_manager.py --action list --slug {slug}`
+→ 调用 `python tools/version_manager.py --action list --slug {slug} --lang {preferred_language}`
 
 用户说"回滚到 v2"：
-→ 调用 `python tools/version_manager.py --action rollback --slug {slug} --version v2`
+→ 调用 `python tools/version_manager.py --action rollback --slug {slug} --version v2 --lang {preferred_language}`
 
 ---
 
