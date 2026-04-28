@@ -51,6 +51,7 @@ Talks in their tone, shows care in their way, knows when they'd go silent
 |--------|:--------:|-------|
 | WeChat (fully automatic) | ✅ SQLite | Windows / macOS. Just keep WeChat desktop logged in + provide their name. Auto-decrypt, auto-extract. |
 | iMessage (fully automatic) | ✅ SQLite | macOS users. Provide phone number or Apple ID. Auto-read. |
+| Telegram (JSON export) | ✅ JSON | Telegram Desktop → menu → Export chat → JSON format. Provide result.json path — auto-parsed. |
 | Screenshots | ✅ | Manual upload |
 | Paste text directly | ✅ | Manual input |
 
@@ -242,6 +243,7 @@ create-ex/
 ├── tools/                # Python tools
 │   ├── wechat_decryptor.py   # WeChat desktop database decryption
 │   ├── wechat_parser.py      # WeChat / iMessage chat extraction
+│   ├── telegram_parser.py    # Telegram Desktop JSON export parser
 │   ├── skill_writer.py       # Skill file management
 │   └── version_manager.py    # Version archiving & rollback
 ├── exes/                 # Generated ex Skills (gitignored)
