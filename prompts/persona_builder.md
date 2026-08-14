@@ -1,10 +1,22 @@
 # Persona 生成模板
 
+## 语言控制
+
+输入变量：`preferred_language`（`zh` 或 `en`）。
+
+规则：
+- 生成的 `persona.md` 必须整体使用 `preferred_language`
+- `preferred_language = zh` 生成中文版 `persona.md`
+- `preferred_language = en` 生成英文版 `persona.md`
+- 示例对话、规则描述、Correction 文案都必须与语言一致
+
 ## 任务
 
 根据 `persona_analyzer.md` 的分析结果 + 用户手动标签，生成 `persona.md` 文件。
 
 该文件定义前任的性格、沟通风格和关系行为模式。**最重要的是真实感——读起来就像 TA 在说话，而不是对 TA 的描述。**
+
+如果 `preferred_language = en`，将模板字段标题和正文全部英文化后输出。
 
 ---
 

@@ -1,30 +1,46 @@
 #!/usr/bin/env python3
 """
-微信 PC 端数据库解密工具
+WeChat desktop database decryptor (Windows + macOS).
 
-支持：
-  - Windows：微信 3.x（SQLCipher 加密，从 WeChatWin.dll 内存提取密钥）
-  - macOS：微信 Mac 版（SQLCipher 加密，从 WeChat 进程内存提取密钥）
+EN:
+    Purpose:
+        Extract SQLCipher keys from a running WeChat process and decrypt local
+        message databases for personal export workflows.
 
-解密原理：
-  微信 PC/Mac 端将聊天数据库用 SQLCipher 加密存储。
-  加密密钥在微信运行时驻留在进程内存中，可通过特征码扫描提取。
-  提取后用 SQLCipher 的 PRAGMA key 解密数据库。
+    Prerequisites:
+        - WeChat must be running and logged in before memory key extraction.
+        - On macOS, grant Full Disk Access to terminal/Python.
+        - On some macOS setups, SIP may block memory attach/read operations.
 
-用法：
-  python wechat_decryptor.py --find-key-only
-  python wechat_decryptor.py --db-dir <MSG目录> --output ./decrypted/
-  python wechat_decryptor.py --key "abcd1234" --db "./MSG0.db" --output "./decrypted/"
+    Dependencies:
+        - psutil (process discovery)
+        - pymem (Windows memory extraction)
+        - pycryptodome (SQLCipher-compatible decryption)
 
-依赖：
-  pip install pycryptodome psutil
-  Windows 额外：pip install pymem
-  macOS 额外：无（使用 lldb）
+    Safety notes:
+        - Personal-use only. Follow local laws and platform terms.
+        - Protect extracted keys and decrypted databases; they contain private data.
+        - If memory extraction fails, extract the key manually and pass --key.
 
-注意：
-  - 运行时微信客户端必须处于登录状态（需从内存读取密钥）
-  - macOS 可能需要关闭 SIP 或授予终端 Full Disk Access 权限
-  - 解密后的数据库仅用于个人读取，不要分发
+ZH:
+    用途：
+        从运行中的微信进程提取 SQLCipher 密钥，并解密本地消息数据库，
+        用于个人导出场景。
+
+    前置条件：
+        - 提取内存密钥前，微信必须已打开且已登录。
+        - macOS 需要给终端/Python 授予完全磁盘访问权限。
+        - 部分 macOS 环境下，SIP 可能阻止内存附加/读取。
+
+    依赖：
+        - psutil（进程查找）
+        - pymem（Windows 内存提取）
+        - pycryptodome（SQLCipher 参数解密）
+
+    安全提示：
+        - 仅限个人合法用途，请遵守当地法律与平台条款。
+        - 妥善保护提取出的密钥与解密后的数据库，其中包含隐私数据。
+        - 若内存提取失败，可手动提取密钥并通过 --key 指定。
 """
 
 import os
@@ -34,22 +50,40 @@ import hashlib
 import argparse
 import subprocess
 from pathlib import Path
+from typing import Optional
 
 
-# ─── 平台检测 ─────────────────────────────────────────────
+CLI_LANG = "zh"
+
+
+def normalize_language(language: Optional[str]) -> str:
+    value = (language or "").strip().lower()
+    if value in {"en", "english"}:
+        return "en"
+    return "zh"
+
+
+def tr(zh: str, en: str) -> str:
+    return en if CLI_LANG == "en" else zh
+
+
+# ─── Platform detection ───────────────────────────────────
 
 IS_WINDOWS = sys.platform == "win32"
 IS_MACOS = sys.platform == "darwin"
 
 
-# ─── 进程查找（跨平台） ───────────────────────────────────
+# ─── Process discovery (cross-platform) ───────────────────
 
-def find_wechat_pid() -> int | None:
-    """找到微信进程的 PID"""
+def find_wechat_pid() -> Optional[int]:
+    """Find the PID of the running WeChat process."""
     try:
         import psutil
     except ImportError:
-        print("请先安装依赖：pip install psutil", file=sys.stderr)
+        print(tr(
+            "请先安装依赖：pip install psutil",
+            "Please install dependency first: pip install psutil",
+        ), file=sys.stderr)
         sys.exit(1)
 
     target_names = (
@@ -64,10 +98,10 @@ def find_wechat_pid() -> int | None:
     return None
 
 
-# ─── 数据目录查找（跨平台） ───────────────────────────────
+# ─── Data directory discovery (cross-platform) ────────────
 
-def get_wechat_data_dir() -> str | None:
-    """获取微信用户数据目录"""
+def get_wechat_data_dir() -> Optional[str]:
+    """Get the WeChat user data directory."""
     if IS_WINDOWS:
         documents = Path.home() / "Documents" / "WeChat Files"
         if documents.exists():
@@ -76,11 +110,11 @@ def get_wechat_data_dir() -> str | None:
         if alt.exists():
             return str(alt)
     elif IS_MACOS:
-        # macOS 微信数据目录
+        # Current macOS WeChat data directory
         containers = Path.home() / "Library" / "Containers" / "com.tencent.xinWeChat" / "Data"
         if containers.exists():
             return str(containers)
-        # 旧版路径
+        # Legacy path
         app_support = Path.home() / "Library" / "Application Support" / "com.tencent.xinWeChat"
         if app_support.exists():
             return str(app_support)
@@ -88,17 +122,17 @@ def get_wechat_data_dir() -> str | None:
 
 
 def find_db_files(db_dir: str) -> list[str]:
-    """找到目录下的所有微信消息数据库文件"""
+    """Find WeChat message database files under a directory."""
     db_dir = Path(db_dir)
     candidates = []
 
-    # 主要消息数据库：MSG0.db ~ MSG19.db
+    # Primary message DBs: MSG0.db ~ MSG19.db
     for i in range(20):
         p = db_dir / f"MSG{i}.db"
         if p.exists():
             candidates.append(str(p))
 
-    # Multi 目录下（部分版本）
+    # Multi directory (some versions)
     multi_dir = db_dir / "Multi"
     if multi_dir.exists():
         for i in range(20):
@@ -106,18 +140,18 @@ def find_db_files(db_dir: str) -> list[str]:
             if p.exists():
                 candidates.append(str(p))
 
-    # macOS 特有路径：Message 目录
+    # macOS-specific directory: Message
     message_dir = db_dir / "Message"
     if message_dir.exists():
         for f in sorted(message_dir.glob("msg_*.db")):
             candidates.append(str(f))
 
-    # 联系人数据库
+    # Contacts DB
     micro_msg = db_dir / "MicroMsg.db"
     if micro_msg.exists():
         candidates.insert(0, str(micro_msg))
 
-    # 如果直接在目录下没找到，递归找一层
+    # If nothing is found directly, recurse one level
     if not candidates:
         for f in sorted(db_dir.glob("**/MSG*.db")):
             candidates.append(str(f))
@@ -130,15 +164,18 @@ def find_db_files(db_dir: str) -> list[str]:
     return candidates
 
 
-# ─── Windows 密钥提取 ─────────────────────────────────────
+# ─── Windows key extraction ────────────────────────────────
 
-def extract_key_windows(pid: int) -> str | None:
-    """从 Windows 微信进程内存中提取数据库密钥"""
+def extract_key_windows(pid: int) -> Optional[str]:
+    """Extract database key from WeChat process memory on Windows."""
     try:
         import pymem
         import pymem.process
     except ImportError:
-        print("请先安装依赖：pip install pymem", file=sys.stderr)
+        print(tr(
+            "请先安装依赖：pip install pymem",
+            "Please install dependency first: pip install pymem",
+        ), file=sys.stderr)
         sys.exit(1)
 
     pm = pymem.Pymem(pid)
@@ -147,7 +184,10 @@ def extract_key_windows(pid: int) -> str | None:
     try:
         wechat_module = pymem.process.module_from_name(pm.process_handle, "WeChatWin.dll")
         if not wechat_module:
-            print("错误：未找到 WeChatWin.dll，请确认微信已登录", file=sys.stderr)
+            print(tr(
+                "错误：未找到 WeChatWin.dll，请确认微信已登录",
+                "Error: WeChatWin.dll not found. Make sure WeChat is logged in.",
+            ), file=sys.stderr)
             return None
 
         module_base = wechat_module.lpBaseOfDll
@@ -179,16 +219,16 @@ def extract_key_windows(pid: int) -> str | None:
             offset += chunk_size
 
     except Exception as e:
-        print(f"内存扫描出错：{e}", file=sys.stderr)
+        print(tr(f"内存扫描出错：{e}", f"Memory scan failed: {e}"), file=sys.stderr)
 
     if not key_candidates:
-        print("未找到密钥候选，尝试备用方法...", file=sys.stderr)
+        print(tr("未找到密钥候选，尝试备用方法...", "No key candidates found, trying fallback..."), file=sys.stderr)
         return _fallback_key_windows(pm)
 
     return key_candidates[0].hex()
 
 
-def _fallback_key_windows(pm) -> str | None:
+def _fallback_key_windows(pm) -> Optional[str]:
     """Windows 备用密钥提取（适用于微信 3.9.x 以下版本）"""
     known_prefixes = [
         bytes.fromhex("0400000020000000"),
@@ -227,24 +267,24 @@ def _fallback_key_windows(pm) -> str | None:
     return None
 
 
-# ─── macOS 密钥提取 ───────────────────────────────────────
+# ─── macOS key extraction ──────────────────────────────────
 
-def extract_key_macos(pid: int) -> str | None:
+def extract_key_macos(pid: int) -> Optional[str]:
     """
-    从 macOS 微信进程内存中提取数据库密钥。
+    Extract database key from WeChat process memory on macOS.
 
-    macOS 微信使用 SQLCipher 加密，密钥同样是 32 字节。
-    通过读取进程内存区域扫描特征码定位密钥。
+    macOS WeChat uses SQLCipher; the key is 32 bytes.
+    This scans readable memory regions for known markers.
 
-    方法 1：通过 lldb attach 读取内存
-    方法 2：通过已知数据库文件 + 暴力验证候选 key
+    Method 1: attach with lldb and scan memory
+    Method 2: fallback to keychain-based lookup
     """
-    # 方法 1：尝试用 lldb 读取进程内存
+    # Method 1: try lldb-based memory extraction
     key = _extract_key_macos_lldb(pid)
     if key:
         return key
 
-    # 方法 2：尝试从 macOS Keychain 获取（部分版本）
+    # Method 2: try macOS Keychain (older versions)
     key = _extract_key_macos_keychain()
     if key:
         return key
@@ -252,10 +292,10 @@ def extract_key_macos(pid: int) -> str | None:
     return None
 
 
-def _extract_key_macos_lldb(pid: int) -> str | None:
-    """通过 lldb 读取微信进程内存提取密钥"""
+def _extract_key_macos_lldb(pid: int) -> Optional[str]:
+    """Extract key by reading WeChat process memory through lldb."""
     try:
-        # 构建 lldb 脚本
+        # Build lldb script
         lldb_script = f"""
 import lldb
 debugger = lldb.SBDebugger.Create()
@@ -313,29 +353,32 @@ else:
                 return line.split(":", 1)[1].strip()
 
     except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
-        print(f"lldb 方法失败：{e}", file=sys.stderr)
+        print(tr(f"lldb 方法失败：{e}", f"lldb extraction failed: {e}"), file=sys.stderr)
 
-    # 备用：直接用 vmmap + 内存 dump
+    # Fallback: vmmap-based path
     return _extract_key_macos_vmmap(pid)
 
 
-def _extract_key_macos_vmmap(pid: int) -> str | None:
-    """通过 vmmap 定位内存区域，再用 dd 读取"""
+def _extract_key_macos_vmmap(pid: int) -> Optional[str]:
+    """Locate candidate memory regions via vmmap (manual-assist fallback)."""
     try:
         result = subprocess.run(
             ["vmmap", "-p", str(pid)],
             capture_output=True, text=True, timeout=10,
         )
-        # 解析 vmmap 输出，找到 __DATA 段
-        # 这是一个简化的实现，实际可能需要更精确的区域过滤
-        print("vmmap 方法暂不支持自动提取，请使用 --key 手动指定密钥", file=sys.stderr)
+        # Parse vmmap output and locate __DATA segments.
+        # This is a simplified path and may require tighter filtering.
+        print(tr(
+            "vmmap 方法暂不支持自动提取，请使用 --key 手动指定密钥",
+            "vmmap extraction is not fully automated yet. Please provide --key manually.",
+        ), file=sys.stderr)
     except Exception:
         pass
     return None
 
 
-def _extract_key_macos_keychain() -> str | None:
-    """尝试从 macOS Keychain 获取微信密钥（部分旧版本可能存在）"""
+def _extract_key_macos_keychain() -> Optional[str]:
+    """Try to read WeChat key material from macOS Keychain (legacy fallback)."""
     try:
         result = subprocess.run(
             ["security", "find-generic-password", "-s", "com.tencent.xinWeChat", "-w"],
@@ -348,23 +391,26 @@ def _extract_key_macos_keychain() -> str | None:
     return None
 
 
-# ─── 跨平台密钥提取入口 ──────────────────────────────────
+# ─── Cross-platform key extraction entrypoint ─────────────
 
-def extract_key_from_memory(pid: int) -> str | None:
-    """根据平台选择对应的密钥提取方法"""
+def extract_key_from_memory(pid: int) -> Optional[str]:
+    """Dispatch key extraction by platform."""
     if IS_WINDOWS:
         return extract_key_windows(pid)
     elif IS_MACOS:
         return extract_key_macos(pid)
     else:
-        print("错误：不支持的操作系统，仅支持 Windows 和 macOS", file=sys.stderr)
+        print(tr(
+            "错误：不支持的操作系统，仅支持 Windows 和 macOS",
+            "Error: unsupported OS. Only Windows and macOS are supported.",
+        ), file=sys.stderr)
         return None
 
 
-# ─── 密钥验证 ─────────────────────────────────────────────
+# ─── Key validation ────────────────────────────────────────
 
 def test_key(db_path: str, key_hex: str) -> bool:
-    """验证密钥是否正确（尝试解密数据库头部）"""
+    """Validate key by attempting to decrypt database header bytes."""
     try:
         key_bytes = bytes.fromhex(key_hex)
 
@@ -389,20 +435,23 @@ def test_key(db_path: str, key_hex: str) -> bool:
         return False
 
 
-# ─── 数据库解密 ───────────────────────────────────────────
+# ─── Database decryption ───────────────────────────────────
 
 def decrypt_db(db_path: str, key_hex: str, output_path: str) -> bool:
     """
-    解密单个微信数据库文件。
-    使用 SQLCipher 的加密参数（AES-256-CBC, PBKDF2-SHA1, 4000 iterations）
-    逐页解密，写入标准 SQLite 文件。
+    Decrypt a single WeChat database file.
+    Uses SQLCipher-compatible parameters (AES-256-CBC, PBKDF2-SHA1, 4000 iterations)
+    and writes a standard SQLite output page-by-page.
     """
     try:
         from Crypto.Hash import HMAC, SHA1
         from Crypto.Protocol.KDF import PBKDF2
         from Crypto.Cipher import AES
     except ImportError:
-        print("请先安装依赖：pip install pycryptodome", file=sys.stderr)
+        print(tr(
+            "请先安装依赖：pip install pycryptodome",
+            "Please install dependency first: pip install pycryptodome",
+        ), file=sys.stderr)
         sys.exit(1)
 
     PAGE_SIZE = 4096
@@ -414,7 +463,10 @@ def decrypt_db(db_path: str, key_hex: str, output_path: str) -> bool:
         raw = f.read()
 
     if len(raw) < PAGE_SIZE:
-        print(f"文件太小，可能不是有效的数据库：{db_path}", file=sys.stderr)
+        print(tr(
+            f"文件太小，可能不是有效的数据库：{db_path}",
+            f"File too small, may not be a valid database: {db_path}",
+        ), file=sys.stderr)
         return False
 
     salt = raw[:16]
@@ -443,7 +495,7 @@ def decrypt_db(db_path: str, key_hex: str, output_path: str) -> bool:
     with open(output_path, "wb") as f:
         f.write(output)
 
-    # 验证
+    # Verify decrypted output can be opened by SQLite
     import sqlite3
     try:
         conn = sqlite3.connect(output_path)
@@ -455,19 +507,19 @@ def decrypt_db(db_path: str, key_hex: str, output_path: str) -> bool:
         return False
 
 
-# ─── 自动查找 wxid 目录（跨平台） ─────────────────────────
+# ─── Auto-discover wxid/account directories ───────────────
 
 def find_wxid_dirs(data_dir: str) -> list[Path]:
-    """在微信数据目录中查找账号目录"""
+    """Find account directories under WeChat data root."""
     data_path = Path(data_dir)
 
     if IS_WINDOWS:
-        # Windows：wxid_xxx 目录
+        # Windows: wxid_xxx directories
         wxid_dirs = [d for d in data_path.iterdir() if d.is_dir() and d.name.startswith("wxid_")]
         if not wxid_dirs:
             wxid_dirs = [d for d in data_path.iterdir() if d.is_dir() and (d / "Msg").exists()]
     elif IS_MACOS:
-        # macOS：版本号/账号哈希 目录结构
+        # macOS: version/account-hash directory layout
         wxid_dirs = []
         for version_dir in data_path.iterdir():
             if not version_dir.is_dir():
@@ -478,7 +530,7 @@ def find_wxid_dirs(data_dir: str) -> list[Path]:
                 msg_dir = account_dir / "Message"
                 if msg_dir.exists():
                     wxid_dirs.append(account_dir)
-                # 有些版本用 Msg 目录
+                # Some versions use Msg instead of Message
                 msg_dir2 = account_dir / "Msg"
                 if msg_dir2.exists():
                     wxid_dirs.append(account_dir)
@@ -489,8 +541,8 @@ def find_wxid_dirs(data_dir: str) -> list[Path]:
 
 
 def find_msg_dir(wxid_dir: Path) -> Path:
-    """从账号目录中定位消息数据库所在目录"""
-    # macOS 用 Message，Windows 用 Msg
+    """Locate the message DB directory inside an account directory."""
+    # macOS usually uses Message, Windows usually uses Msg
     for name in ("Message", "Msg", "msg"):
         candidate = wxid_dir / name
         if candidate.exists():
@@ -498,120 +550,141 @@ def find_msg_dir(wxid_dir: Path) -> Path:
     return wxid_dir
 
 
-# ─── 主入口 ───────────────────────────────────────────────
+# ─── Main entrypoint ───────────────────────────────────────
 
 def main():
+    global CLI_LANG
+
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--lang", choices=["zh", "en"], default="zh")
+    pre_args, _ = pre_parser.parse_known_args()
+    CLI_LANG = normalize_language(pre_args.lang)
+
     if not IS_WINDOWS and not IS_MACOS:
-        print("错误：此工具仅支持 Windows 和 macOS", file=sys.stderr)
+        print(tr("错误：此工具仅支持 Windows 和 macOS", "Error: this tool supports only Windows and macOS"), file=sys.stderr)
         sys.exit(1)
 
-    parser = argparse.ArgumentParser(
-        description="微信 PC/Mac 端数据库解密工具",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-示例：
-  # 自动从内存提取密钥并解密所有数据库
-  python wechat_decryptor.py --db-dir <MSG目录> --output ./decrypted/
+    epilog_en = """
+Examples:
+  # Extract key from memory and decrypt all databases
+  python wechat_decryptor.py --db-dir <MSG_DIR> --output ./decrypted/
 
-  # 只打印密钥
+  # Print key only
   python wechat_decryptor.py --find-key-only
 
-  # 用已知密钥解密单个文件
+  # Decrypt one DB with a known key
   python wechat_decryptor.py --key "abcdef1234..." --db "./MSG0.db" --output "./out/"
 
-  # 验证密钥是否正确
+  # Validate key against a DB
   python wechat_decryptor.py --key "abcdef1234..." --test-db "./MSG0.db"
         """
+
+    epilog_zh = """
+示例：
+  # 从内存提取密钥并解密全部数据库
+  python wechat_decryptor.py --db-dir <MSG目录> --output ./decrypted/
+
+  # 仅打印密钥
+  python wechat_decryptor.py --find-key-only
+
+  # 使用已知密钥解密单个数据库
+  python wechat_decryptor.py --key "abcdef1234..." --db "./MSG0.db" --output "./out/"
+
+  # 使用数据库验证密钥
+  python wechat_decryptor.py --key "abcdef1234..." --test-db "./MSG0.db"
+        """
+
+    parser = argparse.ArgumentParser(
+        description=tr("微信桌面数据库解密工具", "WeChat desktop database decryptor"),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=epilog_en if CLI_LANG == "en" else epilog_zh,
     )
-    parser.add_argument("--db-dir", help="微信消息数据库目录路径")
-    parser.add_argument("--db", help="单个数据库文件路径")
-    parser.add_argument("--output", default="./decrypted", help="解密输出目录（默认：./decrypted）")
-    parser.add_argument("--key", help="已知的密钥（hex 字符串，跳过内存提取）")
-    parser.add_argument("--find-key-only", action="store_true", help="只打印密钥，不解密文件")
-    parser.add_argument("--test-db", help="测试密钥是否正确（配合 --key 使用）")
+    parser.add_argument("--db-dir", help=tr("微信消息数据库目录", "Directory containing WeChat message databases"))
+    parser.add_argument("--db", help=tr("单个数据库文件路径", "Path to a single database file"))
+    parser.add_argument("--output", default="./decrypted", help=tr("解密文件输出目录（默认：./decrypted）", "Output directory for decrypted files (default: ./decrypted)"))
+    parser.add_argument("--key", help=tr("已知密钥（十六进制，跳过内存提取）", "Known key in hex format (skip memory extraction)"))
+    parser.add_argument("--find-key-only", action="store_true", help=tr("仅输出提取到的密钥，不执行解密", "Print extracted key only; do not decrypt"))
+    parser.add_argument("--test-db", help=tr("用单个数据库测试密钥（需配合 --key）", "Validate key against one DB file (use with --key)"))
+    parser.add_argument("--lang", choices=["zh", "en"], default="zh", help=tr("CLI 语言", "CLI language"))
 
     args = parser.parse_args()
+    CLI_LANG = normalize_language(args.lang)
 
     platform_name = "Windows" if IS_WINDOWS else "macOS"
-    print(f"运行平台：{platform_name}")
+    print(tr(f"运行平台：{platform_name}", f"Platform: {platform_name}"))
 
-    # Step 1: 获取密钥
     key_hex = args.key
 
     if not key_hex:
-        print("正在查找微信进程...")
+        print(tr("正在查找微信进程...", "Searching for WeChat process..."))
         pid = find_wechat_pid()
         if not pid:
-            print("错误：未找到微信进程，请先打开微信并登录", file=sys.stderr)
+            print(tr("错误：未找到微信进程，请先打开微信并登录", "Error: WeChat process not found. Please open WeChat and log in first."), file=sys.stderr)
             sys.exit(1)
-        print(f"找到微信进程，PID: {pid}")
+        print(tr(f"找到微信进程，PID: {pid}", f"WeChat process found, PID: {pid}"))
 
-        print("正在从内存提取密钥...")
+        print(tr("正在从内存提取密钥...", "Extracting key from process memory..."))
         key_hex = extract_key_from_memory(pid)
         if not key_hex:
-            print("错误：无法提取密钥。请尝试：", file=sys.stderr)
+            print(tr("错误：无法提取密钥。请尝试：", "Error: failed to extract key. Try the following:"), file=sys.stderr)
             if IS_WINDOWS:
-                print("  1. 确认微信已登录（不是锁屏状态）", file=sys.stderr)
-                print("  2. 以管理员身份运行本脚本", file=sys.stderr)
-                print("  3. 尝试使用 WeChatMsg 或 PyWxDump 工具手动提取密钥", file=sys.stderr)
+                print(tr("  1. 确认微信已登录（不是锁屏状态）", "  1. Ensure WeChat is logged in (not locked)."), file=sys.stderr)
+                print(tr("  2. 以管理员身份运行本脚本", "  2. Run this script as Administrator."), file=sys.stderr)
+                print(tr("  3. 尝试使用 WeChatMsg 或 PyWxDump 工具手动提取密钥", "  3. Try extracting the key manually with WeChatMsg or PyWxDump."), file=sys.stderr)
             elif IS_MACOS:
-                print("  1. 确认微信已登录（不是锁屏状态）", file=sys.stderr)
-                print("  2. 授予终端 Full Disk Access 权限（系统设置 → 隐私与安全）", file=sys.stderr)
-                print("  3. 如果开启了 SIP，可能需要关闭（csrutil disable）", file=sys.stderr)
-                print("  4. 尝试手动提取密钥后用 --key 指定", file=sys.stderr)
+                print(tr("  1. 确认微信已登录（不是锁屏状态）", "  1. Ensure WeChat is logged in (not locked)."), file=sys.stderr)
+                print(tr("  2. 授予终端 Full Disk Access 权限（系统设置 → 隐私与安全）", "  2. Grant Full Disk Access to terminal (Privacy & Security settings)."), file=sys.stderr)
+                print(tr("  3. 如果开启了 SIP，可能需要关闭（csrutil disable）", "  3. If SIP is enabled, you may need to disable it (csrutil disable)."), file=sys.stderr)
+                print(tr("  4. 尝试手动提取密钥后用 --key 指定", "  4. Extract key manually and pass it with --key."), file=sys.stderr)
             sys.exit(1)
-        print(f"密钥提取成功：{key_hex}")
+        print(tr(f"密钥提取成功：{key_hex}", f"Key extracted successfully: {key_hex}"))
 
     if args.find_key_only:
-        print(f"\n密钥（hex）：{key_hex}")
-        print("使用方法：python wechat_decryptor.py --key <上面的密钥> --db-dir <MSG目录> --output ./decrypted/")
+        print(tr(f"\n密钥（hex）：{key_hex}", f"\nKey (hex): {key_hex}"))
+        print(tr("使用方法：python wechat_decryptor.py --key <上面的密钥> --db-dir <MSG目录> --output ./decrypted/", "Usage: python wechat_decryptor.py --key <above_key> --db-dir <MSG_dir> --output ./decrypted/"))
         return
 
-    # Step 2: 测试密钥
     if args.test_db:
-        print(f"正在验证密钥...")
+        print(tr("正在验证密钥...", "Validating key..."))
         if test_key(args.test_db, key_hex):
-            print("✓ 密钥正确")
+            print(tr("✓ 密钥正确", "✓ Key is valid"))
         else:
-            print("✗ 密钥错误或文件格式不支持")
+            print(tr("✗ 密钥错误或文件格式不支持", "✗ Invalid key or unsupported file format"))
         return
 
-    # Step 3: 确定要解密的文件列表
     db_files = []
     if args.db:
         db_files = [args.db]
     elif args.db_dir:
         db_files = find_db_files(args.db_dir)
         if not db_files:
-            print(f"错误：在 {args.db_dir} 下未找到数据库文件", file=sys.stderr)
+            print(tr(f"错误：在 {args.db_dir} 下未找到数据库文件", f"Error: no database files found under {args.db_dir}"), file=sys.stderr)
             sys.exit(1)
-        print(f"找到 {len(db_files)} 个数据库文件")
+        print(tr(f"找到 {len(db_files)} 个数据库文件", f"Found {len(db_files)} database files"))
     else:
-        # 自动查找微信数据目录
         data_dir = get_wechat_data_dir()
         if not data_dir:
-            print("错误：未找到微信数据目录，请手动指定 --db-dir", file=sys.stderr)
+            print(tr("错误：未找到微信数据目录，请手动指定 --db-dir", "Error: WeChat data directory not found. Please provide --db-dir."), file=sys.stderr)
             sys.exit(1)
-        print(f"微信数据目录：{data_dir}")
+        print(tr(f"微信数据目录：{data_dir}", f"WeChat data directory: {data_dir}"))
 
         wxid_dirs = find_wxid_dirs(data_dir)
         if not wxid_dirs:
-            print(f"错误：在 {data_dir} 下未找到账号目录，请手动指定 --db-dir", file=sys.stderr)
+            print(tr(f"错误：在 {data_dir} 下未找到账号目录，请手动指定 --db-dir", f"Error: no account directory found under {data_dir}. Please provide --db-dir."), file=sys.stderr)
             sys.exit(1)
         if len(wxid_dirs) > 1:
-            print("找到多个账号：")
+            print(tr("找到多个账号：", "Multiple accounts found:"))
             for i, d in enumerate(wxid_dirs):
                 print(f"  [{i}] {d.name}")
-            choice = int(input("请选择账号序号："))
+            choice = int(input(tr("请选择账号序号：", "Select account index: ")))
             wxid_dir = wxid_dirs[choice]
         else:
             wxid_dir = wxid_dirs[0]
 
         msg_dir = find_msg_dir(wxid_dir)
         db_files = find_db_files(str(msg_dir))
-        print(f"账号目录：{wxid_dir.name}，找到 {len(db_files)} 个数据库")
+        print(tr(f"账号目录：{wxid_dir.name}，找到 {len(db_files)} 个数据库", f"Account directory: {wxid_dir.name}, found {len(db_files)} databases"))
 
-    # Step 4: 解密
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -619,17 +692,17 @@ def main():
     for db_path in db_files:
         db_name = Path(db_path).name
         out_path = str(output_dir / db_name)
-        print(f"解密 {db_name}...", end=" ", flush=True)
+        print(tr(f"解密 {db_name}...", f"Decrypting {db_name}..."), end=" ", flush=True)
         if decrypt_db(db_path, key_hex, out_path):
             print("✓")
             success_count += 1
         else:
-            print("✗ 失败（密钥可能不匹配）")
+            print(tr("✗ 失败（密钥可能不匹配）", "✗ Failed (key may not match)"))
 
-    print(f"\n完成：{success_count}/{len(db_files)} 个文件解密成功")
-    print(f"解密文件保存在：{output_dir.absolute()}")
-    print(f"\n下一步：运行 wechat_parser.py 提取聊天记录")
-    print(f"  python wechat_parser.py --db-dir {output_dir.absolute()} --target \"TA的微信名\" --output messages.txt")
+    print(tr(f"\n完成：{success_count}/{len(db_files)} 个文件解密成功", f"\nDone: {success_count}/{len(db_files)} files decrypted successfully"))
+    print(tr(f"解密文件保存在：{output_dir.absolute()}", f"Decrypted files saved to: {output_dir.absolute()}"))
+    print(tr("\n下一步：运行 wechat_parser.py 提取聊天记录", "\nNext: run wechat_parser.py to extract messages"))
+    print(tr(f"  python wechat_parser.py --db-dir {output_dir.absolute()} --target \"TA的微信名\" --output messages.txt", f"  python wechat_parser.py --db-dir {output_dir.absolute()} --target \"contact_name\" --output messages.txt"))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,15 @@
 # 基础信息录入脚本
 
+## 语言控制
+
+输入变量：`preferred_language`（`zh` 或 `en`）。
+
+执行规则：
+- 所有用户可见内容（提问、示例、确认汇总、导入引导）必须使用 `preferred_language`
+- `preferred_language = zh` 时使用中文
+- `preferred_language = en` 时使用英文
+- 不得混用双语，除非用户明确要求切换
+
 ## 开场白
 
 ```
@@ -7,9 +17,18 @@
 信息越详细，生成的人格越准——尤其是星盘和 MBTI，能大幅提升准确率。
 ```
 
+当 `preferred_language = en` 时使用：
+
+```
+I can help you rebuild your ex's digital persona. Please answer a few questions, and each one can be skipped.
+The more detail you share, the more accurate the persona will be - especially astrology and MBTI details.
+```
+
 ---
 
 ## 问题序列
+
+说明：以下问题内容与字段解析逻辑保持不变；当 `preferred_language = en` 时，将问题文本、示例文案与确认语句翻译为自然英文后再发送给用户。
 
 ### Q1：称呼/代号
 
@@ -306,6 +325,8 @@ TA 的 MBTI 类型是？知道认知功能栈或者九型人格更好。
 确认无误？（确认 / 修改 [字段名]）
 ```
 
+当 `preferred_language = en` 时，确认汇总需要完整英文化，例如：`Does everything look correct? (confirm / modify [field])`。
+
 用户确认后进入 Step 2 微信数据导入。
 
 ---
@@ -328,3 +349,5 @@ TA 的 MBTI 类型是？知道认知功能栈或者九型人格更好。
 
 跳过也行，后续随时可以追加（说"追加记录"）。
 ```
+
+当 `preferred_language = en` 时，完整使用英文版本说明（含 A/B/C 方式、命令解释与跳过提示）。
