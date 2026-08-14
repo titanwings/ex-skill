@@ -1,6 +1,6 @@
 ---
 name: create-ex
-description: 从微信聊天记录创建前任的数字人格 Skill
+description: 从微信/iMessage/Telegram 聊天记录创建前任的数字人格 Skill
 user-invocable: true
 triggers:
   - /create-ex
@@ -54,7 +54,7 @@ Step 5 → 写入文件       （调用 tools/skill_writer.py）
 引导用户选择导入方式：
 
 ```
-现在需要导入 TA 的聊天记录。有三种方式：
+现在需要导入 TA 的聊天记录。有四种方式：
 
 方式 A（推荐）：微信自动采集
   只需要确保微信 PC 端已登录，然后告诉我 TA 的微信名就行，剩下的全自动。
@@ -62,7 +62,11 @@ Step 5 → 写入文件       （调用 tools/skill_writer.py）
 方式 B：iMessage 自动采集（海外用户）
   macOS 用户，告诉我 TA 的手机号或 Apple ID 就行，自动读取。
 
-方式 C：直接粘贴聊天记录文本或截图
+方式 C：Telegram 导出
+  在 Telegram Desktop → 右上角菜单 → 导出聊天记录 → 格式选 JSON → 导出
+  把 result.json 文件路径告诉我，剩下的全自动。
+
+方式 D：直接粘贴聊天记录文本或截图
 
 跳过也行，后续随时追加（说"追加记录"）。
 ```
@@ -77,6 +81,13 @@ python tools/wechat_parser.py --db-dir ./decrypted/ --target "{用户提供的�
 ```bash
 python tools/wechat_parser.py --imessage --target "{用户提供的手机号或Apple ID}" --output messages.txt
 ```
+
+用户选择方式 C 时，自动执行：
+```bash
+python tools/telegram_parser.py --json "{用户提供的 result.json 路径}" --output messages.txt
+```
+
+如果是群组聊天或自动识别失败，追加 `--target "{TA 的名字}"` 参数。
 
 采集完成后自动进入 Step 3，无需用户手动操作。
 
@@ -222,7 +233,8 @@ python tools/skill_writer.py --action list --base-dir ./exes
 | `prompts/merger.md` | 追加记录时的增量 merge |
 | `prompts/correction_handler.md` | 对话纠正处理 |
 | `tools/wechat_decryptor.py` | 解密微信 PC 端数据库 |
-| `tools/wechat_parser.py` | 提取指定联系人的聊天记录 |
+| `tools/wechat_parser.py` | 提取指定联系人的聊天记录（微信/iMessage） |
+| `tools/telegram_parser.py` | 解析 Telegram Desktop JSON 导出 |
 | `tools/skill_writer.py` | 写入/更新 Skill 文件 |
 | `tools/version_manager.py` | 版本存档与回滚 |
 | `exes/example_liuzhimin/` | 示例前任（Zhimin Liu） |
